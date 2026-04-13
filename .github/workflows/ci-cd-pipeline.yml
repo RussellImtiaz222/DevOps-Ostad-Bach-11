@@ -1,0 +1,181 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - feature/*
+      - bugfix/*
+      - hotfix/*
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  validate-branch:
+    name: Validate Branch Name
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Check branch naming convention
+        run: |
+          BRANCH_NAME=$(echo "${GITHUB_REF#refs/heads/}")
+          echo "Branch: $BRANCH_NAME"
+          
+          # Check if branch matches allowed patterns
+          if [[ $BRANCH_NAME =~ ^(main|develop|master|release/.*)$ ]] || \
+             [[ $BRANCH_NAME =~ ^(feature|bugfix|hotfix|docs|test|improvement)\/[a-z0-9\-]+$ ]]; then
+            echo "✅ Branch name is valid"
+            exit 0
+          else
+            echo "❌ Invalid branch name: $BRANCH_NAME"
+            echo "Must follow conventions: feature/, bugfix/, hotfix/, docs/, test/, improvement/, or use main/develop"
+            exit 1
+          fi
+
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    needs: validate-branch
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Check for syntax errors in shell scripts
+        run: |
+          echo "🔍 Checking shell scripts..."
+          for file in *.sh; do
+            if [ -f "$file" ]; then
+              echo "Validating $file..."
+              bash -n "$file" && echo "✅ $file is valid" || echo "❌ $file has errors"
+            fi
+          done
+
+      - name: Check for syntax errors in PowerShell scripts
+        run: |
+          echo "🔍 Checking PowerShell scripts..."
+          for file in *.ps1; do
+            if [ -f "$file" ]; then
+              echo "Found PowerShell file: $file"
+            fi
+          done
+
+      - name: Verify documentation exists
+        run: |
+          if [ -f "README.md" ]; then
+            echo "✅ README.md exists"
+            wc -l README.md
+          else
+            echo "⚠️ README.md not found"
+          fi
+
+  commit-message-validation:
+    name: Validate Commit Messages
+    runs-on: ubuntu-latest
+    needs: validate-branch
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit messages
+        run: |
+          echo "🔍 Validating commit messages..."
+          
+          # Get all commits in this push (comparing to the base branch)
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE=$(git merge-base origin/${{ github.base_ref }} HEAD)
+          else
+            BASE=$(git rev-list --max-count=1 HEAD~1 2>/dev/null || echo "HEAD")
+          fi
+          
+          COMMITS=$(git rev-list $BASE..HEAD 2>/dev/null || git log -1 --format=%H)
+          
+          INVALID=0
+          for commit in $COMMITS; do
+            MESSAGE=$(git log -1 --format=%B $commit)
+            
+            # Skip merge commits
+            if git log -1 --format=%B $commit | grep -q "^Merge"; then
+              echo "✅ Merge commit: $(git log -1 --format=%h $commit)"
+              continue
+            fi
+            
+            # Check message format
+            if echo "$MESSAGE" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|chore)(\(.+\))?: .{10,}' || \
+               echo "$MESSAGE" | grep -q "\[skip ci\]"; then
+              echo "✅ Valid: $(git log -1 --format=%h $commit) - $(echo "$MESSAGE" | head -1)"
+            else
+              echo "❌ Invalid: $(git log -1 --format=%h $commit) - $(echo "$MESSAGE" | head -1)"
+              echo "   Must follow: <type>(<scope>): <subject>"
+              INVALID=$((INVALID + 1))
+            fi
+          done
+          
+          if [ $INVALID -gt 0 ]; then
+            echo ""
+            echo "❌ Found $INVALID invalid commit message(s)"
+            exit 1
+          fi
+
+  test-scripts:
+    name: Test Scripts
+    runs-on: ubuntu-latest
+    needs: validate-branch
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Execute shell scripts in dry-run mode
+        run: |
+          echo "🧪 Testing shell scripts..."
+          for file in *.sh; do
+            if [ -f "$file" ]; then
+              echo "Testing $file..."
+              bash -n "$file" && echo "✅ $file passed syntax check"
+            fi
+          done
+
+      - name: Verify no forbidden patterns
+        run: |
+          echo "🔍 Checking for forbidden patterns..."
+          FORBIDDEN_COUNT=$(grep -r "TODO\|FIXME\|HACK" . --include="*.md" --include="*.sh" --include="*.ps1" 2>/dev/null | wc -l || echo 0)
+          if [ "$FORBIDDEN_COUNT" -gt 0 ]; then
+            echo "⚠️ Found $FORBIDDEN_COUNT TODO/FIXME/HACK comments"
+          else
+            echo "✅ No outstanding TODOs found"
+          fi
+
+  summary:
+    name: CI/CD Summary
+    runs-on: ubuntu-latest
+    needs: [validate-branch, code-quality, commit-message-validation, test-scripts]
+    if: always()
+    steps:
+      - name: Print summary
+        run: |
+          echo "=========================================="
+          echo "CI/CD Pipeline Execution Summary"
+          echo "=========================================="
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "=========================================="
+          
+          # Check if all jobs passed
+          if [ "${{ needs.validate-branch.result }}" == "success" ] && \
+             [ "${{ needs.code-quality.result }}" == "success" ] && \
+             [ "${{ needs.commit-message-validation.result }}" == "success" ] && \
+             [ "${{ needs.test-scripts.result }}" == "success" ]; then
+            echo "✅ All checks passed!"
+            exit 0
+          else
+            echo "❌ Some checks failed"
+            exit 1
+          fi

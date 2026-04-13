@@ -1,0 +1,5 @@
+@echo off
+REM pre-commit hook: Enforce branch naming conventions
+REM Wrapper that calls the PowerShell script
+PowerShell -NoProfile -ExecutionPolicy Bypass -Command ".github/hooks/pre-commit.ps1"
+exit /b %ERRORLEVEL%
