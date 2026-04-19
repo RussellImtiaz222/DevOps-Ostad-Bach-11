@@ -1,0 +1,57 @@
+# Git ignore rules for Nginx Secure App
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.sublime-workspace
+.sublime-project
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+venv/
+ENV/
+env/
+.venv
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Generated SSL certificates (if you want to regenerate)
+# Uncomment to ignore generated certs
+# /etc/nginx/ssl/
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+
+# System backups
+*.bak
+*.backup
+nginx.conf.bak
