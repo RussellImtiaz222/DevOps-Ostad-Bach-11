@@ -1,0 +1,102 @@
+name: Terraform Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'terraform/**'
+  pull_request:
+    paths:
+      - 'terraform/**'
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  tfsec:
+    name: TFSec Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run TFSec scan
+        uses: aquasecurity/tfsec-action@v1.0.2
+        with:
+          working_directory: terraform/
+          format: sarif
+          out_dir: tfsec-results
+
+      - name: Upload TFSec SARIF
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: tfsec-results/terraform.sarif
+
+  checkov:
+    name: Checkov Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run Checkov scan
+        id: checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+          output_format: sarif
+          output_file_path: reports/checkov.sarif
+          soft_fail: true
+          compact: true
+
+      - name: Upload Checkov SARIF
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: reports/checkov.sarif
+
+  trivy:
+    name: Trivy Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: trivy-results.sarif
+
+  terraform-compliance:
+    name: Terraform Compliance Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Terraform Compliance
+        run: pip install terraform-compliance
+
+      - name: Run Terraform Compliance
+        run: terraform-compliance -f . -p modules/
+        continue-on-error: true

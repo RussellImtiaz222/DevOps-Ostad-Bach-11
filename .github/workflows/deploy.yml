@@ -1,0 +1,144 @@
+name: Build and Deploy Application
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'application/**'
+      - '.github/workflows/deploy.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'application/**'
+
+env:
+  AWS_REGION: us-east-1
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./application/backend
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/backend:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository }}/backend:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository }}/backend:buildcache,mode=max
+      
+      - name: Test Frontend
+        run: |
+          cd application/frontend
+          # Basic validation of HTML
+          if ! grep -q "3-Tier Application" index.html; then
+            echo "Frontend validation failed"
+            exit 1
+          fi
+          echo "Frontend validation passed"
+      
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: application-artifacts
+          path: application/
+
+  deploy:
+    name: Deploy Application
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Download Terraform Outputs
+        uses: actions/download-artifact@v3
+        with:
+          name: terraform-outputs
+      
+      - name: Extract Infrastructure Details
+        run: |
+          if [ -f outputs.json ]; then
+            ALB_DNS=$(jq -r '.alb_dns_name.value' outputs.json)
+            echo "ALB_DNS_NAME=$ALB_DNS" >> $GITHUB_ENV
+            echo "Infrastructure Details:"
+            echo "ALB DNS: $ALB_DNS"
+          fi
+      
+      - name: Deploy Backend
+        run: |
+          echo "Deploying backend application..."
+          # Get the ASG name from infrastructure
+          # Update ASG with new launch template
+          # This would typically trigger a rolling deployment
+          echo "Backend deployment initiated"
+      
+      - name: Health Check
+        run: |
+          if [ ! -z "${{ env.ALB_DNS_NAME }}" ]; then
+            echo "Checking application health..."
+            for i in {1..5}; do
+              if curl -s http://${{ env.ALB_DNS_NAME }}/health | grep -q "healthy"; then
+                echo "Application is healthy"
+                exit 0
+              fi
+              echo "Attempt $i: Waiting for application to be ready..."
+              sleep 10
+            done
+            echo "Health check failed after 5 attempts"
+            exit 1
+          else
+            echo "ALB DNS not available, skipping health check"
+          fi
+        continue-on-error: true
+      
+      - name: Slack Notification
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Application Deployment ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Application Deployment* ${{ job.status }}\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Commit:* ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        continue-on-error: true

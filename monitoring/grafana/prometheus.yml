@@ -1,0 +1,56 @@
+# Prometheus Configuration
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: '3-tier-app-monitor'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - localhost:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Application Backend API
+  - job_name: 'backend-api'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    # Update with your ALB DNS name
+    static_configs:
+      - targets: ['backend-api:8080']
+        labels:
+          service: 'backend'
+          environment: 'dev'
+
+  # CloudWatch Exporter
+  - job_name: 'cloudwatch'
+    static_configs:
+      - targets: ['localhost:9106']
+
+  # AlertManager
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['localhost:9093']
+
+  # Node Exporter (if running on bastion/app servers)
+  - job_name: 'node'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['localhost:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '([^:]+)(?::\d+)?'
+        replacement: '${1}:9100'
+        target_label: __address__

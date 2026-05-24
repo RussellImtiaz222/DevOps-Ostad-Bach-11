@@ -1,0 +1,108 @@
+# Prometheus Alerting Rules for 3-Tier Application
+
+groups:
+  - name: application_alerts
+    interval: 30s
+    rules:
+      # High CPU on Application Servers
+      - alert: HighCPUUtilization
+        expr: aws_ec2_cpuutilization_average{AutoScalingGroupName="dev-app-asg"} > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU utilization detected"
+          description: "Application server CPU utilization is {{ $value }}% for {{ $labels.instance }}"
+
+      # Database CPU High
+      - alert: DatabaseHighCPU
+        expr: aws_rds_cpuutilization_average{DBInstanceIdentifier="dev-database"} > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database CPU utilization is high"
+          description: "RDS CPU utilization is {{ $value }}% for {{ $labels.instance }}"
+
+      # Low Disk Space
+      - alert: DatabaseLowDiskSpace
+        expr: aws_rds_freestoragespace_average{DBInstanceIdentifier="dev-database"} < 2147483648
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database disk space is low"
+          description: "RDS free storage space is {{ $value }} bytes"
+
+      # High Connection Count
+      - alert: DatabaseHighConnections
+        expr: aws_rds_databaseconnections_average{DBInstanceIdentifier="dev-database"} > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High database connection count"
+          description: "Active database connections: {{ $value }}"
+
+      # ALB Unhealthy Targets
+      - alert: ALBUnhealthyTargets
+        expr: aws_applicationelb_unhealthyhostcount_average > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "ALB has unhealthy targets"
+          description: "Unhealthy target count: {{ $value }}"
+
+      # High ALB Response Time
+      - alert: HighALBResponseTime
+        expr: aws_applicationelb_targetresponsetime_average > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High ALB response time"
+          description: "Average response time: {{ $value }}s"
+
+      # Backend API Down
+      - alert: BackendAPIDown
+        expr: up{job="backend-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend API is down"
+          description: "Backend API at {{ $labels.instance }} is not responding"
+
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.instance }}"
+
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      # Instance Down
+      - alert: EC2InstanceDown
+        expr: count(ec2_running_instances) < 2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Running EC2 instances below minimum"
+          description: "Number of running instances: {{ $value }}"
+
+      # High Network Traffic
+      - alert: HighNetworkTraffic
+        expr: rate(aws_ec2_networkin_sum[5m]) > 1000000000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High network traffic detected"
+          description: "Network traffic: {{ humanize $value }} bytes/sec"
