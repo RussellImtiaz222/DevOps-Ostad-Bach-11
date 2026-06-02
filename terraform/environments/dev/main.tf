@@ -1,5 +1,5 @@
-# Manual pipeline run - validate post-deployment security
-# Pipeline configured to only scan dev environment
+# Manual pipeline run - validate all security fixes applied
+# Fixed: removed unsupported tfsec parameters, updated to CodeQL v3
 terraform {
   required_version = ">= 1.0"
   
