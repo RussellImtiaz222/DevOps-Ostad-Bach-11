@@ -15,13 +15,13 @@ jobs:
   tfsec:
     name: TFSec Security Scan
     runs-on: ubuntu-latest
+    continue-on-error: true
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Run TFSec scan
-        continue-on-error: true
         uses: aquasecurity/tfsec-action@v1.0.2
         with:
           working_directory: terraform/
@@ -37,6 +37,7 @@ jobs:
   checkov:
     name: Checkov Security Scan
     runs-on: ubuntu-latest
+    continue-on-error: true
 
     steps:
       - name: Checkout code
@@ -44,7 +45,6 @@ jobs:
 
       - name: Run Checkov scan
         id: checkov
-        continue-on-error: true
         uses: bridgecrewio/checkov-action@master
         with:
           directory: terraform/
@@ -63,13 +63,13 @@ jobs:
   trivy:
     name: Trivy Vulnerability Scan
     runs-on: ubuntu-latest
+    continue-on-error: true
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Run Trivy scan
-        continue-on-error: true
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
@@ -105,7 +105,6 @@ jobs:
 
       - name: Run Terraform Compliance
         run: terraform-compliance -f . -p modules/
-        continue-on-error: true
 
   security-scan-result:
     name: Security Scan Summary
@@ -114,11 +113,20 @@ jobs:
     if: always()
 
     steps:
-      - name: Check scanning results
+      - name: Determine workflow status
         run: |
-          echo "Security scans completed. Review the annotations for details on any findings."
-          echo "TFSec job: ${{ needs.tfsec.result }}"
-          echo "Checkov job: ${{ needs.checkov.result }}"
-          echo "Trivy job: ${{ needs.trivy.result }}"
-          echo "Terraform Compliance: ${{ needs.terraform-compliance.result }}"
-          exit 0
+          # Check if all required jobs passed (terraform-compliance)
+          if [ "${{ needs.terraform-compliance.result }}" == "success" ]; then
+            echo "✅ Terraform Compliance Check PASSED"
+            echo ""
+            echo "Security scan results:"
+            echo "- TFSec: ${{ needs.tfsec.result }}"
+            echo "- Checkov: ${{ needs.checkov.result }}"
+            echo "- Trivy: ${{ needs.trivy.result }}"
+            echo ""
+            echo "Review the annotations tab above for security findings and remediation guidance."
+            exit 0
+          else
+            echo "❌ Terraform Compliance Check FAILED"
+            exit 1
+          fi
