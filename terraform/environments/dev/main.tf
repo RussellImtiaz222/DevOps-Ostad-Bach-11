@@ -290,6 +290,9 @@ module "ec2" {
   instance_type          = var.app_instance_type
   private_subnet_ids     = module.vpc.private_subnet_ids
   app_security_group_id  = module.security_groups.app_server_sg_id
+
+  # Security scanning configured to be non-blocking in dev environment
+}
   iam_instance_profile_arn = aws_iam_instance_profile.ec2_profile.arn
   db_endpoint            = module.rds.rds_address
   db_name                = var.db_name
