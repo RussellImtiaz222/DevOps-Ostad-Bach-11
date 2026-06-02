@@ -34,72 +34,73 @@ locals {
 }
 
 # VPC Flow Logs for Network Monitoring
-resource "aws_flow_log" "main" {
-  iam_role_arn    = aws_iam_role.flow_logs.arn
-  log_destination = aws_cloudwatch_log_group.flow_logs.arn
-  traffic_type    = "ALL"
-  vpc_id          = module.vpc.vpc_id
+# NOTE: Commented out due to IAM permission constraints
+# resource "aws_flow_log" "main" {
+#   iam_role_arn    = aws_iam_role.flow_logs.arn
+#   log_destination = aws_cloudwatch_log_group.flow_logs.arn
+#   traffic_type    = "ALL"
+#   vpc_id          = module.vpc.vpc_id
+#
+#   tags = merge(
+#     local.common_tags,
+#     {
+#       Name = "${var.environment}-vpc-flow-logs"
+#     }
+#   )
+# }
 
-  tags = merge(
-    local.common_tags,
-    {
-      Name = "${var.environment}-vpc-flow-logs"
-    }
-  )
-}
+# resource "aws_cloudwatch_log_group" "flow_logs" {
+#   name              = "/aws/vpc/flow-logs/${var.environment}"
+#   retention_in_days = 7
+#
+#   tags = merge(
+#     local.common_tags,
+#     {
+#       Name = "${var.environment}-flow-logs-group"
+#     }
+#   )
+# }
 
-resource "aws_cloudwatch_log_group" "flow_logs" {
-  name              = "/aws/vpc/flow-logs/${var.environment}"
-  retention_in_days = 7
+# resource "aws_iam_role" "flow_logs" {
+#   name_prefix = "${var.environment}-vpc-flow-logs-"
+#
+#   assume_role_policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       {
+#         Action = "sts:AssumeRole"
+#         Effect = "Allow"
+#         Principal = {
+#           Service = "vpc-flow-logs.amazonaws.com"
+#         }
+#       }
+#     ]
+#   })
+#
+#   tags = local.common_tags
+# }
 
-  tags = merge(
-    local.common_tags,
-    {
-      Name = "${var.environment}-flow-logs-group"
-    }
-  )
-}
-
-resource "aws_iam_role" "flow_logs" {
-  name_prefix = "${var.environment}-vpc-flow-logs-"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "vpc-flow-logs.amazonaws.com"
-        }
-      }
-    ]
-  })
-
-  tags = local.common_tags
-}
-
-resource "aws_iam_role_policy" "flow_logs" {
-  name_prefix = "${var.environment}-vpc-flow-logs-"
-  role        = aws_iam_role.flow_logs.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogGroups",
-          "logs:DescribeLogStreams"
-        ]
-        Effect   = "Allow"
-        Resource = "${aws_cloudwatch_log_group.flow_logs.arn}:*"
-      }
-    ]
-  })
-}
+# resource "aws_iam_role_policy" "flow_logs" {
+#   name_prefix = "${var.environment}-vpc-flow-logs-"
+#   role        = aws_iam_role.flow_logs.id
+#
+#   policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       {
+#         Action = [
+#           "logs:CreateLogGroup",
+#           "logs:CreateLogStream",
+#           "logs:PutLogEvents",
+#           "logs:DescribeLogGroups",
+#           "logs:DescribeLogStreams"
+#         ]
+#         Effect   = "Allow"
+#         Resource = "${aws_cloudwatch_log_group.flow_logs.arn}:*"
+#       }
+#     ]
+#   })
+# }
 
 # VPC Module
 module "vpc" {
@@ -286,24 +287,21 @@ resource "aws_lb_listener" "http" {
 module "ec2" {
   source = "../../modules/ec2"
 
-  environment            = var.environment
-  instance_type          = var.app_instance_type
-  private_subnet_ids     = module.vpc.private_subnet_ids
-  app_security_group_id  = module.security_groups.app_server_sg_id
-
-  # Non-blocking security scanning in place
-}
+  environment              = var.environment
+  instance_type            = var.app_instance_type
+  private_subnet_ids       = module.vpc.private_subnet_ids
+  app_security_group_id    = module.security_groups.app_server_sg_id
   iam_instance_profile_arn = aws_iam_instance_profile.ec2_profile.arn
-  db_endpoint            = module.rds.rds_address
-  db_name                = var.db_name
-  db_user                = var.master_username
-  db_password            = var.master_password
-  aws_region             = var.aws_region
-  min_size               = var.app_min_size
-  max_size               = var.app_max_size
-  desired_capacity       = var.app_desired_capacity
-  target_group_arns      = [aws_lb_target_group.backend.arn]
-  common_tags            = local.common_tags
+  db_endpoint              = module.rds.rds_address
+  db_name                  = var.db_name
+  db_user                  = var.master_username
+  db_password              = var.master_password
+  aws_region               = var.aws_region
+  min_size                 = var.app_min_size
+  max_size                 = var.app_max_size
+  desired_capacity         = var.app_desired_capacity
+  target_group_arns        = [aws_lb_target_group.backend.arn]
+  common_tags              = local.common_tags
 
   depends_on = [module.vpc, module.security_groups, module.rds, aws_lb_target_group.backend]
 }
