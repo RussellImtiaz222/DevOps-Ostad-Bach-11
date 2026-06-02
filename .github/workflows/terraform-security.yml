@@ -24,7 +24,7 @@ jobs:
       - name: Run TFSec scan
         uses: aquasecurity/tfsec-action@v1.0.2
         with:
-          working_directory: terraform/
+          working_directory: terraform/environments/dev/
           format: sarif
           out_dir: tfsec-results
 
@@ -47,7 +47,7 @@ jobs:
         id: checkov
         uses: bridgecrewio/checkov-action@master
         with:
-          directory: terraform/
+          directory: terraform/environments/dev/
           framework: terraform
           output_format: sarif
           output_file_path: reports/checkov.sarif
