@@ -234,5 +234,5 @@ variable "grafana_password" {
   description = "Grafana admin password"
   type        = string
   sensitive   = true
-  default     = "changeme"
+  # Set this in terraform.tfvars or via environment variable TF_VAR_grafana_password
 }
