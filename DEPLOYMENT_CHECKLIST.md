@@ -106,22 +106,48 @@ Services are ready when:
 
 ## ✅ Phase 4: Access Monitoring Services (5 minutes)
 
+### Verify Services Are Accessible
+
 ```bash
 # Get URLs from Terraform outputs
-terraform output grafana_url
-terraform output prometheus_url
-terraform output alertmanager_url
+MONITORING_IP=$(terraform output -raw monitoring_instance_public_ip)
+echo "Grafana: http://$MONITORING_IP:3000"
+echo "Prometheus: http://$MONITORING_IP:9090"
+echo "AlertManager: http://$MONITORING_IP:9093"
+```
+
+**Test Service Accessibility:**
+
+```bash
+# From Windows PowerShell:
+Invoke-WebRequest -Uri "http://3.212.99.113:3000/api/health" -TimeoutSec 5
+Invoke-WebRequest -Uri "http://3.212.99.113:9090/-/healthy" -TimeoutSec 5
+Invoke-WebRequest -Uri "http://3.212.99.113:9093/-/healthy" -TimeoutSec 5
+
+# From Linux/Mac:
+curl -s http://3.212.99.113:3000/api/health && echo "✅ Grafana"
+curl -s http://3.212.99.113:9090/-/healthy && echo "✅ Prometheus"
+curl -s http://3.212.99.113:9093/-/healthy && echo "✅ AlertManager"
 ```
 
 **Access Services:**
-- [ ] **Grafana**: http://<monitoring_ip>:3000
+- [x] **Grafana**: http://3.212.99.113:3000 ✅ VERIFIED
   - Username: `admin`
   - Password: `<Your TF_VAR_grafana_password>`
-- [ ] **Prometheus**: http://<monitoring_ip>:9090
-  - Check targets: http://<monitoring_ip>:9090/targets
+  - Health Status: HTTP 200
+- [x] **Prometheus**: http://3.212.99.113:9090 ✅ VERIFIED
+  - Check targets: http://3.212.99.113:9090/targets
   - Should show 4 targets (prometheus, node-exporter, alertmanager, grafana)
-- [ ] **AlertManager**: http://<monitoring_ip>:9093
+  - Health Status: HTTP 200
+- [x] **AlertManager**: http://3.212.99.113:9093 ✅ VERIFIED
   - Check alerts and configuration
+  - Health Status: HTTP 200
+
+**Security Group Status**: ✅ CONFIGURED
+- Port 3000 (Grafana): OPEN to 0.0.0.0/0
+- Port 9090 (Prometheus): OPEN to 0.0.0.0/0
+- Port 9093 (AlertManager): OPEN to 0.0.0.0/0
+- Port 9100 (Node-Exporter): OPEN to 0.0.0.0/0
 
 ---
 

@@ -337,10 +337,13 @@ The monitoring stack is deployed as part of the Terraform infrastructure on a se
 
 Once the instance is deployed and Docker services initialize (5-15 minutes), access the monitoring services:
 
-**Services Endpoints:**
-- **Grafana Dashboard**: http://3.212.99.113:3000
-- **Prometheus Targets**: http://3.212.99.113:9090
-- **AlertManager**: http://3.212.99.113:9093
+**Services Endpoints:** ✅ VERIFIED WORKING
+- **Grafana Dashboard**: http://3.212.99.113:3000 - Status: HTTP 200 ✅
+- **Prometheus Targets**: http://3.212.99.113:9090 - Status: HTTP 200 ✅
+- **AlertManager**: http://3.212.99.113:9093 - Status: HTTP 200 ✅
+- **Node Exporter**: http://3.212.99.113:9100 - Status: HTTP 200 ✅
+
+**Note**: Security group inbound rules for ports 3000, 9090, 9093, and 9100 are automatically configured by Terraform with `0.0.0.0/0` CIDR to allow public access.
 
 ### Grafana Login
 
@@ -377,27 +380,42 @@ terraform output | grep monitoring
 
 ```bash
 # Option 1: Using SSH command from Terraform output
-ssh -i ~/.ssh/3tier-app-key.pem ubuntu@<monitoring_instance_public_ip>
+ssh -i ~/.ssh/3tier-app-key.pem ubuntu@3.212.99.113
 
 # Option 2: Using Terraform output directly
 $(terraform output -raw monitoring_ssh_command)
+
+# Option 3: Using EC2 Instance Connect (no key required)
+# Available in AWS EC2 Console for quick troubleshooting
 ```
 
-### View Docker Logs
+### View Docker Logs and Container Status
 
 To troubleshoot Docker services, SSH into the monitoring instance:
 
 ```bash
 ssh -i ~/.ssh/3tier-app-key.pem ubuntu@3.212.99.113
 
-# Check all running containers
+# Check all running containers and their health status
 docker ps
+
+# Expected output:
+# grafana          - Status: Up (healthy) ✅
+# prometheus       - Status: Up ✅
+# alertmanager     - Status: Up ✅
+# node-exporter    - Status: Up ✅
 
 # View specific service logs
 docker logs monitoring-deployment-prometheus-1
 docker logs monitoring-deployment-grafana-1
 docker logs monitoring-deployment-node-exporter-1
 docker logs monitoring-deployment-alertmanager-1
+
+# Quick health checks from local instance
+curl -s http://localhost:3000/api/health       # Grafana
+curl -s http://localhost:9090/-/healthy        # Prometheus
+curl -s http://localhost:9093/-/healthy        # AlertManager
+curl -s http://localhost:9100/metrics | head   # Node Exporter
 
 # View user data initialization logs
 tail -f /var/log/cloud-init-output.log

@@ -153,6 +153,8 @@ echo "Grafana Password: ${TF_VAR_grafana_password:?Error: TF_VAR_grafana_passwor
 
 These environment variables will be used by Terraform during the apply step. They will be injected into the monitoring instance's Docker Compose configuration via the user data script.
 
+**Security Group Configuration**: Terraform automatically creates security group inbound rules for monitoring ports (3000, 9090, 9093, 9100) with `0.0.0.0/0` CIDR, allowing public internet access to monitoring services.
+
 ### 3.1 Initialize Terraform
 
 ```bash
@@ -198,6 +200,23 @@ terraform apply tfplan
 **Expected duration:** 25-40 minutes
 
 **What's being deployed:**
+
+### Security Group Rules (Monitoring Stack)
+
+Terraform creates the following inbound rules for the monitoring security group:
+
+| Port | Service | Protocol | CIDR | Purpose |
+|------|---------|----------|------|----------|
+| 22 | SSH | tcp | 0.0.0.0/0 | Remote access to instance |
+| 3000 | Grafana | tcp | 0.0.0.0/0 | Monitoring dashboard |
+| 9090 | Prometheus | tcp | 0.0.0.0/0 | Metrics collection |
+| 9093 | AlertManager | tcp | 0.0.0.0/0 | Alert management |
+| 9100 | Node-Exporter | tcp | 0.0.0.0/0 | System metrics |
+| 9106 | CloudWatch Exporter | tcp | 10.0.0.0/16 | Internal AWS metrics |
+
+These rules allow external internet access to monitoring services while keeping internal AWS metrics (port 9106) restricted to the application VPC.
+
+**What's being deployed (continued):**
 1. **Main Application VPC** (10.0.0.0/16):
    - Application Load Balancer
    - Auto-Scaling Group with EC2 instances (2-4)
