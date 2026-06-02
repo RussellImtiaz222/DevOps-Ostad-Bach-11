@@ -1,3 +1,4 @@
+# Manual pipeline run - validate post-deployment security
 terraform {
   required_version = ">= 1.0"
   
