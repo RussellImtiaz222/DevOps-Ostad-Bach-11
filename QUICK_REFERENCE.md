@@ -1,8 +1,157 @@
 # Quick Reference Guide
 
-Quick commands and tips for managing the 3-tier application infrastructure.
+**Status**: Complete with monitoring, alerting, and CI/CD  
+**Last Updated**: June 1, 2026
 
-## Terraform Quick Commands
+Quick commands, URLs, and tips for managing the 3-tier application infrastructure.
+
+---
+
+## 🔗 Important URLs & Endpoints
+
+### Monitoring Stack:
+```
+Prometheus:      http://<MONITORING_IP>:9090
+Grafana:         http://<MONITORING_IP>:3000
+AlertManager:    http://<MONITORING_IP>:9093
+Node Exporter:   http://<MONITORING_IP>:9100/metrics
+```
+
+### Application:
+```
+Health:      http://<ALB_DNS>/health
+System Info: http://<ALB_DNS>/system-info
+Metrics:     http://<ALB_DNS>/metrics
+```
+
+---
+
+## 🚀 Essential Commands
+
+### Get Infrastructure Details:
+```bash
+cd terraform/environments/dev
+terraform output -json > outputs.json
+
+# Extract values
+ALB_DNS=$(jq -r '.alb_dns_name.value' outputs.json)
+MONITORING_IP=$(jq -r '.monitoring_instance_public_ip.value' outputs.json)
+BASTION_IP=$(jq -r '.bastion_public_ip.value' outputs.json)
+RDS_ENDPOINT=$(jq -r '.rds_endpoint.value' outputs.json)
+```
+
+### SSH Access:
+```bash
+# To application server (via bastion)
+ssh -i ~/.ssh/3tier-app-key.pem -J ubuntu@$BASTION_IP ubuntu@APP_IP
+
+# To monitoring server
+ssh -i ~/.ssh/3tier-app-key.pem ubuntu@$MONITORING_IP
+
+# To bastion
+ssh -i ~/.ssh/3tier-app-key.pem ubuntu@$BASTION_IP
+```
+
+### Health Checks:
+```bash
+curl http://$ALB_DNS/health
+curl http://$MONITORING_IP:9090/-/healthy
+curl http://$MONITORING_IP:3000/api/health
+curl http://$MONITORING_IP:9093/-/healthy
+```
+
+### Deploy Monitoring:
+```bash
+cd monitoring/grafana
+cp .env.example .env
+nano .env  # Update SMTP settings
+bash setup.sh
+```
+
+### Test Alerts:
+```bash
+curl -X POST http://$MONITORING_IP:9093/api/v1/alerts \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "alerts": [{
+      "status": "firing",
+      "labels": {"alertname": "TestAlert", "severity": "critical"},
+      "annotations": {"summary": "Test alert from monitoring"}
+    }]
+  }'
+```
+
+### Load Testing:
+```bash
+ab -n 1000 -c 10 http://$ALB_DNS/
+```
+
+---
+
+## 📊 Prometheus Common Queries
+
+```promql
+# CPU Usage
+100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+# Memory Usage
+(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+
+# Disk Usage
+(1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes)) * 100
+
+# Request Rate
+rate(http_requests_total[5m])
+
+# Error Rate
+rate(http_requests_total{status=~"5.."}[5m])
+
+# Response Time (P95)
+histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+
+# Up Status
+up{job="backend-api"}
+```
+
+---
+
+## 🚨 Alert Configuration
+
+### SMTP Settings (Gmail Example):
+```
+SMTP_HOST: smtp.gmail.com
+SMTP_PORT: 587
+SMTP_USERNAME: your-email@gmail.com
+SMTP_PASSWORD: app-password (not main password)
+```
+
+### Alert Thresholds:
+- High CPU: >80% for 5m
+- Critical CPU: >95% for 2m
+- High Memory: >80% for 5m
+- Critical Memory: >90% for 2m
+- High Disk: >80% for 5m
+- Critical Disk: >90% for 2m
+
+---
+
+## ⚙️ GitHub Secrets to Configure
+
+```
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+MONITORING_HOST
+MONITORING_SSH_KEY
+SMTP_USERNAME
+SMTP_PASSWORD
+ALERT_EMAIL_TO
+ALERT_CRITICAL_EMAIL_TO
+SLACK_WEBHOOK_URL (optional)
+```
+
+---
+
+## 📋 Terraform Quick Commands
 
 ### Initialize & Validate
 ```bash

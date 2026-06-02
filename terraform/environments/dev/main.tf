@@ -27,14 +27,10 @@ provider "aws" {
 }
 
 locals {
-  common_tags = merge(
-    var.common_tags,
-    {
-      Environment = var.environment
-      ManagedBy   = "Terraform"
-      CreatedAt   = timestamp()
-    }
-  )
+  common_tags = {
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
 }
 
 # VPC Module
@@ -231,4 +227,34 @@ module "ec2" {
   common_tags            = local.common_tags
 
   depends_on = [module.vpc, module.security_groups, module.rds, aws_lb_target_group.backend]
+}
+
+# Monitoring Module
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  project_name              = "3-tier-app"
+  environment               = var.environment
+  vpc_cidr                  = "10.200.0.0/16"
+  monitoring_subnet_cidr    = "10.200.1.0/24"
+  instance_type             = "t3.medium"
+  root_volume_size          = 50
+  key_pair_name             = var.key_pair_name
+  allowed_ssh_cidr_blocks   = var.allowed_ssh_cidr
+  allowed_access_cidr_blocks = ["0.0.0.0/0"]
+  
+  # SMTP Configuration
+  smtp_host           = var.smtp_host != "" ? var.smtp_host : "smtp.gmail.com"
+  smtp_port           = var.smtp_port
+  smtp_username       = var.smtp_username != "" ? var.smtp_username : "your-email@gmail.com"
+  alert_from_email    = var.alert_from_email != "" ? var.alert_from_email : "alerts@example.com"
+  alert_email_to      = var.alert_email_to != "" ? var.alert_email_to : "ops@example.com"
+  alert_critical_email_to = var.alert_critical_email_to != "" ? var.alert_critical_email_to : "oncall@example.com"
+  
+  grafana_password    = var.grafana_password
+  alarm_actions       = []
+  
+  tags                = local.common_tags
+
+  depends_on = [module.vpc, module.security_groups]
 }

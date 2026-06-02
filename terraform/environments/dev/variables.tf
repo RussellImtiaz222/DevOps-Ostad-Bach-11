@@ -184,3 +184,55 @@ variable "app_desired_capacity" {
   type        = number
   default     = 2
 }
+
+# Monitoring Stack Variables
+variable "smtp_host" {
+  description = "SMTP host for email alerts"
+  type        = string
+  default     = ""
+}
+
+variable "smtp_port" {
+  description = "SMTP port for email alerts"
+  type        = number
+  default     = 587
+}
+
+variable "smtp_username" {
+  description = "SMTP username for email alerts"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "smtp_password" {
+  description = "SMTP password for email alerts"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "alert_from_email" {
+  description = "Email address to send alerts from"
+  type        = string
+  default     = ""
+}
+
+variable "alert_email_to" {
+  description = "Email address(es) to send alerts to (comma-separated)"
+  type        = string
+  default     = ""
+}
+
+variable "alert_critical_email_to" {
+  description = "Email address(es) for critical alerts (comma-separated)"
+  type        = string
+  default     = ""
+}
+
+variable "grafana_password" {
+  description = "Grafana admin password"
+  type        = string
+  sensitive   = true
+  default     = "changeme"
+}

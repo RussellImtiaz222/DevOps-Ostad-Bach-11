@@ -79,50 +79,53 @@ resource "aws_db_parameter_group" "main" {
   )
 }
 
-# CloudWatch Alarm - Database CPU
-resource "aws_cloudwatch_metric_alarm" "rds_cpu" {
-  alarm_name          = "${var.environment}-rds-cpu-high"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
-  metric_name         = "CPUUtilization"
-  namespace           = "AWS/RDS"
-  period              = "300"
-  statistic           = "Average"
-  threshold           = "80"
+# CloudWatch Alarm - Database CPU (DISABLED - requires cloudwatch:PutMetricAlarm IAM permission)
+# Use Prometheus + Grafana for equivalent monitoring
+# resource "aws_cloudwatch_metric_alarm" "rds_cpu" {
+#   alarm_name          = "${var.environment}-rds-cpu-high"
+#   comparison_operator = "GreaterThanThreshold"
+#   evaluation_periods  = "2"
+#   metric_name         = "CPUUtilization"
+#   namespace           = "AWS/RDS"
+#   period              = "300"
+#   statistic           = "Average"
+#   threshold           = "80"
+#
+#   dimensions = {
+#     DBInstanceIdentifier = aws_db_instance.main.id
+#   }
+# }
 
-  dimensions = {
-    DBInstanceIdentifier = aws_db_instance.main.id
-  }
-}
+# CloudWatch Alarm - Database Connections (DISABLED - requires cloudwatch:PutMetricAlarm IAM permission)
+# Use Prometheus + Grafana for equivalent monitoring
+# resource "aws_cloudwatch_metric_alarm" "rds_connections" {
+#   alarm_name          = "${var.environment}-rds-connections-high"
+#   comparison_operator = "GreaterThanThreshold"
+#   evaluation_periods  = "2"
+#   metric_name         = "DatabaseConnections"
+#   namespace           = "AWS/RDS"
+#   period              = "300"
+#   statistic           = "Average"
+#   threshold           = "80"
+#
+#   dimensions = {
+#     DBInstanceIdentifier = aws_db_instance.main.id
+#   }
+# }
 
-# CloudWatch Alarm - Database Connections
-resource "aws_cloudwatch_metric_alarm" "rds_connections" {
-  alarm_name          = "${var.environment}-rds-connections-high"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
-  metric_name         = "DatabaseConnections"
-  namespace           = "AWS/RDS"
-  period              = "300"
-  statistic           = "Average"
-  threshold           = "80"
-
-  dimensions = {
-    DBInstanceIdentifier = aws_db_instance.main.id
-  }
-}
-
-# CloudWatch Alarm - Free Storage Space
-resource "aws_cloudwatch_metric_alarm" "rds_storage" {
-  alarm_name          = "${var.environment}-rds-storage-low"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = "1"
-  metric_name         = "FreeStorageSpace"
-  namespace           = "AWS/RDS"
-  period              = "300"
-  statistic           = "Average"
-  threshold           = "2147483648" # 2GB in bytes
-
-  dimensions = {
-    DBInstanceIdentifier = aws_db_instance.main.id
-  }
-}
+# CloudWatch Alarm - Free Storage Space (DISABLED - requires cloudwatch:PutMetricAlarm IAM permission)
+# Use Prometheus + Grafana for equivalent monitoring
+# resource "aws_cloudwatch_metric_alarm" "rds_storage" {
+#   alarm_name          = "${var.environment}-rds-storage-low"
+#   comparison_operator = "LessThanThreshold"
+#   evaluation_periods  = "1"
+#   metric_name         = "FreeStorageSpace"
+#   namespace           = "AWS/RDS"
+#   period              = "300"
+#   statistic           = "Average"
+#   threshold           = "2147483648" # 2GB in bytes
+#
+#   dimensions = {
+#     DBInstanceIdentifier = aws_db_instance.main.id
+#   }
+# }

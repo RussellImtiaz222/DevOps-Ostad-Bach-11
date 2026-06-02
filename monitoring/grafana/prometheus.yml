@@ -1,14 +1,19 @@
-# Prometheus Configuration
+# Prometheus Configuration for 3-Tier Application and System Monitoring
+# Includes metrics collection from applications, EC2 instances, RDS, and system exporters
+
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
     monitor: '3-tier-app-monitor'
+    environment: 'dev'
+    region: 'us-east-1'
 
 # Alerting configuration
 alerting:
   alertmanagers:
-    - static_configs:
+    - scheme: http
+      static_configs:
         - targets:
             - localhost:9093
 
@@ -22,35 +27,87 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Node Exporter - System metrics (CPU, RAM, disk, network)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          instance: 'monitoring-server'
+          service: 'system'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metric_relabel_configs:
+      # Keep only relevant metrics to reduce cardinality
+      - source_labels: [__name__]
+        regex: 'node_(cpu|memory|filesystem|network|disk|load|hwmon).*'
+        action: keep
 
   # Application Backend API
   - job_name: 'backend-api'
     metrics_path: '/metrics'
     scrape_interval: 30s
-    # Update with your ALB DNS name
+    scrape_timeout: 10s
+    # Update with your backend service address
     static_configs:
-      - targets: ['backend-api:8080']
+      - targets: ['backend:8080']
         labels:
           service: 'backend'
           environment: 'dev'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
 
-  # CloudWatch Exporter
+  # CloudWatch Exporter - AWS metrics
   - job_name: 'cloudwatch'
     static_configs:
-      - targets: ['localhost:9106']
+      - targets: ['cloudwatch-exporter:9106']
+    scrape_interval: 60s
+    scrape_timeout: 10s
 
   # AlertManager
   - job_name: 'alertmanager'
     static_configs:
-      - targets: ['localhost:9093']
-
-  # Node Exporter (if running on bastion/app servers)
-  - job_name: 'node'
+      - targets: ['alertmanager:9093']
     scrape_interval: 30s
+
+  # Database metrics (if PostgreSQL exporter is deployed)
+  - job_name: 'postgres'
     static_configs:
-      - targets: ['localhost:9100']
-    relabel_configs:
-      - source_labels: [__address__]
-        regex: '([^:]+)(?::\d+)?'
-        replacement: '${1}:9100'
-        target_label: __address__
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'database'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metric_relabel_configs:
+      # Keep database-specific metrics
+      - source_labels: [__name__]
+        regex: 'pg_.*'
+        action: keep
+
+  # Docker metrics (if cAdvisor is deployed)
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'containers'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+# Optional: Service discovery for EC2 instances (requires AWS credentials)
+# Uncomment to enable automatic EC2 discovery
+# - job_name: 'ec2-discovery'
+#   ec2_sd_configs:
+#     - region: us-east-1
+#       port: 9100
+#       filters:
+#         - name: tag:Environment
+#           values: [dev]
+#   relabel_configs:
+#     - source_labels: [__meta_ec2_tag_Name]
+#       target_label: instance
+#     - source_labels: [__meta_ec2_instance_type]
+#       target_label: instance_type
+

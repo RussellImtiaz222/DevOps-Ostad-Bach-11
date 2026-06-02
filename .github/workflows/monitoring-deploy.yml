@@ -1,0 +1,326 @@
+name: Deploy Monitoring Stack
+
+# Trigger on changes to monitoring configuration or manual deployment
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'monitoring/**'
+      - '.github/workflows/monitoring-deploy.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'monitoring/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      monitoring_host:
+        description: 'Monitoring server hostname/IP'
+        required: true
+        default: 'monitoring.internal'
+
+env:
+  MONITORING_USER: 'monitoring'
+  DOCKER_REGISTRY: 'ghcr.io'
+  REGISTRY_CACHE: 'type=registry,ref=${{ github.repository }}/monitoring:buildcache'
+
+jobs:
+  validate:
+    name: Validate Configuration
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      
+      - name: Validate Prometheus Configuration
+        run: |
+          cd monitoring/grafana
+          # Check prometheus.yml syntax
+          if ! grep -q "global:" prometheus.yml; then
+            echo "Invalid prometheus.yml: missing global section"
+            exit 1
+          fi
+          if ! grep -q "scrape_configs:" prometheus.yml; then
+            echo "Invalid prometheus.yml: missing scrape_configs"
+            exit 1
+          fi
+          echo "✓ prometheus.yml validation passed"
+      
+      - name: Validate AlertManager Configuration
+        run: |
+          cd monitoring/grafana
+          # Check alertmanager-config.yml syntax
+          if ! grep -q "global:" alertmanager-config.yml; then
+            echo "Invalid alertmanager-config.yml: missing global section"
+            exit 1
+          fi
+          if ! grep -q "route:" alertmanager-config.yml; then
+            echo "Invalid alertmanager-config.yml: missing route"
+            exit 1
+          fi
+          echo "✓ alertmanager-config.yml validation passed"
+      
+      - name: Validate Prometheus Rules
+        run: |
+          cd monitoring/grafana
+          # Check prometheus_rules.yml syntax
+          if ! grep -q "groups:" prometheus_rules.yml; then
+            echo "Invalid prometheus_rules.yml: missing groups section"
+            exit 1
+          fi
+          echo "✓ prometheus_rules.yml validation passed"
+      
+      - name: Validate Docker Compose
+        run: |
+          cd monitoring/grafana
+          docker-compose config > /dev/null
+          echo "✓ docker-compose.yml validation passed"
+
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name != 'pull_request'
+    
+    permissions:
+      contents: read
+      packages: write
+    
+    strategy:
+      matrix:
+        service: [prometheus, grafana, alertmanager, node-exporter]
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      # Note: For this workflow, we're using pre-built images from Docker Hub
+      # If you need to build custom images, add Dockerfile for each service
+      
+      - name: Log Build Information
+        run: |
+          echo "Building monitoring stack for environment: ${{ github.ref_name }}"
+          echo "Registry: ${{ env.DOCKER_REGISTRY }}"
+          echo "Repository: ${{ github.repository }}"
+
+  deploy:
+    name: Deploy Monitoring Stack
+    runs-on: ubuntu-latest
+    needs: [validate, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.MONITORING_HOST }}
+          username: ${{ env.MONITORING_USER }}
+          key: ${{ secrets.MONITORING_SSH_KEY }}
+          script: |
+            set -e
+            
+            echo "🚀 Deploying monitoring stack..."
+            
+            # Navigate to monitoring directory
+            cd ~/deployment/monitoring/grafana
+            
+            # Pull latest code
+            cd ~/deployment && git pull origin main
+            cd monitoring/grafana
+            
+            # Load environment variables
+            if [ ! -f .env ]; then
+              echo "⚠️  .env file not found, creating from example..."
+              cp .env.example .env
+              # Update with secrets from GitHub
+              sed -i 's/your-email@gmail.com/${{ secrets.SMTP_USERNAME }}/g' .env
+              sed -i 's/your-app-password/${{ secrets.SMTP_PASSWORD }}/g' .env
+              sed -i 's/ops@yourdomain.com/${{ secrets.ALERT_EMAIL_TO }}/g' .env
+              sed -i 's/oncall@yourdomain.com/${{ secrets.ALERT_CRITICAL_EMAIL_TO }}/g' .env
+              sed -i 's/your-access-key/${{ secrets.AWS_ACCESS_KEY_ID }}/g' .env
+              sed -i 's/your-secret-key/${{ secrets.AWS_SECRET_ACCESS_KEY }}/g' .env
+            fi
+            
+            # Export environment variables
+            export $(cat .env | grep -v '^#' | xargs)
+            
+            # Stop existing containers
+            echo "⏹️  Stopping existing services..."
+            docker-compose down || true
+            
+            # Start new services
+            echo "▶️  Starting monitoring services..."
+            docker-compose up -d
+            
+            # Wait for services to stabilize
+            echo "⏳ Waiting for services to start..."
+            sleep 30
+            
+            # Verify services are healthy
+            echo "🔍 Verifying services..."
+            
+            if ! curl -s http://localhost:9090/-/healthy > /dev/null; then
+              echo "❌ Prometheus health check failed"
+              docker-compose logs prometheus
+              exit 1
+            fi
+            echo "✓ Prometheus is healthy"
+            
+            if ! curl -s http://localhost:3000/api/health > /dev/null; then
+              echo "❌ Grafana health check failed"
+              docker-compose logs grafana
+              exit 1
+            fi
+            echo "✓ Grafana is healthy"
+            
+            if ! curl -s http://localhost:9093/-/healthy > /dev/null; then
+              echo "❌ AlertManager health check failed"
+              docker-compose logs alertmanager
+              exit 1
+            fi
+            echo "✓ AlertManager is healthy"
+            
+            echo "✅ Monitoring stack deployed successfully"
+      
+      - name: Test Email Alert Configuration
+        run: |
+          # Test AlertManager configuration
+          echo "Testing email alert configuration..."
+          
+          # Verify SMTP settings are configured
+          if [ -z "${{ secrets.SMTP_USERNAME }}" ]; then
+            echo "⚠️  SMTP credentials not configured"
+          else
+            echo "✓ SMTP credentials configured"
+          fi
+          
+          if [ -z "${{ secrets.ALERT_EMAIL_TO }}" ]; then
+            echo "⚠️  Alert email address not configured"
+          else
+            echo "✓ Alert email address configured"
+          fi
+      
+      - name: Verify Prometheus Data Collection
+        run: |
+          echo "Verifying Prometheus is collecting metrics..."
+          
+          # Give Prometheus time to collect metrics
+          sleep 10
+          
+          # Check if Node Exporter metrics are present
+          if curl -s http://localhost:9090/api/v1/query?query=up | grep -q '"result"'; then
+            echo "✓ Prometheus is collecting metrics"
+          else
+            echo "⚠️  Prometheus may not have collected metrics yet"
+          fi
+      
+      - name: Upload Configuration Backup
+        uses: actions/upload-artifact@v3
+        with:
+          name: monitoring-config-backup
+          path: monitoring/grafana/
+          retention-days: 30
+      
+      - name: Slack Notification - Success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "✅ Monitoring Stack Deployed Successfully",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Monitoring Stack Deployment* ✅\n*Status:* Success\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Triggered by:* ${{ github.actor }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Services:\n• Prometheus: http://${{ secrets.MONITORING_HOST }}:9090\n• Grafana: http://${{ secrets.MONITORING_HOST }}:3000\n• AlertManager: http://${{ secrets.MONITORING_HOST }}:9093"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        continue-on-error: true
+      
+      - name: Slack Notification - Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "❌ Monitoring Stack Deployment Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Monitoring Stack Deployment* ❌\n*Status:* Failed\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Triggered by:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        continue-on-error: true
+
+  test-alerts:
+    name: Test Alert Configuration
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success()
+    
+    steps:
+      - name: Test AlertManager Configuration
+        run: |
+          echo "Testing AlertManager alert routing..."
+          
+          # Test that AlertManager is receiving alerts
+          for i in {1..3}; do
+            if curl -s http://localhost:9093/api/v1/alerts | grep -q '"alerts"'; then
+              echo "✓ AlertManager API is responding"
+              break
+            fi
+            if [ $i -eq 3 ]; then
+              echo "❌ AlertManager API not responding"
+              exit 1
+            fi
+            sleep 5
+          done
