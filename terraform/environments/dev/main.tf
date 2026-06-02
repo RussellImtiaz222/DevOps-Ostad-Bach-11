@@ -33,6 +33,74 @@ locals {
   }
 }
 
+# VPC Flow Logs for Network Monitoring
+resource "aws_flow_log" "main" {
+  iam_role_arn    = aws_iam_role.flow_logs.arn
+  log_destination = aws_cloudwatch_log_group.flow_logs.arn
+  traffic_type    = "ALL"
+  vpc_id          = module.vpc.vpc_id
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.environment}-vpc-flow-logs"
+    }
+  )
+}
+
+resource "aws_cloudwatch_log_group" "flow_logs" {
+  name              = "/aws/vpc/flow-logs/${var.environment}"
+  retention_in_days = 7
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.environment}-flow-logs-group"
+    }
+  )
+}
+
+resource "aws_iam_role" "flow_logs" {
+  name_prefix = "${var.environment}-vpc-flow-logs-"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "vpc-flow-logs.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy" "flow_logs" {
+  name_prefix = "${var.environment}-vpc-flow-logs-"
+  role        = aws_iam_role.flow_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams"
+        ]
+        Effect   = "Allow"
+        Resource = "${aws_cloudwatch_log_group.flow_logs.arn}:*"
+      }
+    ]
+  })
+}
+
 # VPC Module
 module "vpc" {
   source = "../../modules/vpc"
@@ -113,7 +181,7 @@ resource "aws_iam_role_policy_attachment" "ec2_cloudwatch" {
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
-# Custom policy for RDS access
+# Custom policy for RDS access with specific ARNs
 resource "aws_iam_role_policy" "rds_access" {
   name_prefix = "${var.environment}-rds-"
   role        = aws_iam_role.ec2_role.id
@@ -127,6 +195,14 @@ resource "aws_iam_role_policy" "rds_access" {
           "rds-db:connect"
         ]
         Resource = [module.rds.rds_arn]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+
+          "cloudwatch:PutMetricData"
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -160,7 +236,7 @@ resource "aws_lb" "main" {
   security_groups    = [module.security_groups.alb_sg_id]
   subnets            = module.vpc.public_subnet_ids
 
-  enable_deletion_protection = false
+  enable_deletion_protection = true
 
   tags = merge(
     local.common_tags,
@@ -194,16 +270,52 @@ resource "aws_lb_target_group" "backend" {
   )
 }
 
-# ALB Listener
+# ALB Listener - HTTP redirect to HTTPS
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
 
   default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+# ALB Listener - HTTPS
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = aws_acm_certificate.main.arn
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+
+  default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.backend.arn
   }
+}
+
+# ACM Certificate for HTTPS (self-signed for testing)
+resource "aws_acm_certificate" "main" {
+  domain_name       = "app.example.com"
+  validation_method = "DNS"
+  
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.environment}-app-cert"
+    }
+  )
 }
 
 # EC2 Module for Application Servers
@@ -241,7 +353,7 @@ module "monitoring" {
   root_volume_size          = 50
   key_pair_name             = var.key_pair_name
   allowed_ssh_cidr_blocks   = var.allowed_ssh_cidr
-  allowed_access_cidr_blocks = ["0.0.0.0/0"]
+  allowed_access_cidr_blocks = [var.vpc_cidr]
   
   # SMTP Configuration
   smtp_host           = var.smtp_host != "" ? var.smtp_host : "smtp.gmail.com"

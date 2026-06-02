@@ -14,6 +14,11 @@ terraform {
 # Get current AWS region
 data "aws_region" "current" {}
 
+# Get available zones
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 # Create VPC (or use existing)
 resource "aws_vpc" "monitoring" {
   cidr_block           = var.vpc_cidr
@@ -26,17 +31,80 @@ resource "aws_vpc" "monitoring" {
   }
 }
 
-# Create public subnet for monitoring
-resource "aws_subnet" "monitoring_public" {
+# Create private subnet for monitoring
+resource "aws_subnet" "monitoring_private" {
   vpc_id                  = aws_vpc.monitoring.id
   cidr_block              = var.monitoring_subnet_cidr
+  availability_zone       = data.aws_availability_zones.available.names[0]
+  map_public_ip_on_launch = false
+
+  tags = {
+    Name        = "${var.project_name}-monitoring-private-subnet"
+    Environment = var.environment
+  }
+}
+
+# NAT Gateway for private subnet outbound access
+resource "aws_eip" "nat" {
+  domain = "vpc"
+
+  tags = {
+    Name        = "${var.project_name}-monitoring-nat-eip"
+    Environment = var.environment
+  }
+
+  depends_on = [aws_internet_gateway.monitoring]
+}
+
+resource "aws_nat_gateway" "monitoring" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.monitoring_public.id
+
+  tags = {
+    Name        = "${var.project_name}-monitoring-nat"
+    Environment = var.environment
+  }
+
+  depends_on = [aws_internet_gateway.monitoring]
+}
+
+# Private route table
+resource "aws_route_table" "monitoring_private" {
+  vpc_id = aws_vpc.monitoring.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.monitoring.id
+  }
+
+  tags = {
+    Name        = "${var.project_name}-monitoring-private-rt"
+    Environment = var.environment
+  }
+}
+
+resource "aws_route_table_association" "monitoring_private" {
+  subnet_id      = aws_subnet.monitoring_private.id
+  route_table_id = aws_route_table.monitoring_private.id
+}
+
+# Create public subnet for monitoring (for bastion access only)
+resource "aws_subnet" "monitoring_public" {
+  vpc_id                  = aws_vpc.monitoring.id
+  cidr_block              = "10.200.2.0/24"
   availability_zone       = data.aws_availability_zones.available.names[0]
   map_public_ip_on_launch = true
 
   tags = {
-    Name        = "${var.project_name}-monitoring-subnet"
+    Name        = "${var.project_name}-monitoring-public-subnet"
     Environment = var.environment
   }
+}
+
+# Associate public route table with public subnet
+resource "aws_route_table_association" "monitoring_public" {
+  subnet_id      = aws_subnet.monitoring_public.id
+  route_table_id = aws_route_table.monitoring_public.id
 }
 
 # Internet Gateway
@@ -64,8 +132,8 @@ resource "aws_route_table" "monitoring_public" {
   }
 }
 
-# Associate route table with subnet
-resource "aws_route_table_association" "monitoring" {
+# Associate route table with public subnet
+resource "aws_route_table_association" "monitoring_igw" {
   subnet_id      = aws_subnet.monitoring_public.id
   route_table_id = aws_route_table.monitoring_public.id
 }
@@ -194,6 +262,11 @@ resource "aws_iam_role_policy" "monitoring_cloudwatch" {
           "elasticloadbalancing:DescribeTargetHealth"
         ]
         Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = data.aws_region.current.name
+          }
+        }
       }
     ]
   })
@@ -210,7 +283,7 @@ resource "aws_instance" "monitoring" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   key_name               = var.key_pair_name
-  subnet_id              = aws_subnet.monitoring_public.id
+  subnet_id              = aws_subnet.monitoring_private.id
   iam_instance_profile   = aws_iam_instance_profile.monitoring.name
   vpc_security_group_ids = [aws_security_group.monitoring.id]
 
@@ -518,10 +591,6 @@ resource "aws_eip" "monitoring" {
 # }
 
 # Data sources
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical

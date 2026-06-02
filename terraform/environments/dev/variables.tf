@@ -47,13 +47,13 @@ variable "availability_zones" {
 variable "allowed_ssh_cidr" {
   description = "CIDR blocks allowed for SSH access"
   type        = list(string)
-  default     = ["0.0.0.0/0"] # Change to your IP for production
+  default     = ["10.0.0.0/8"] # Restrict to corporate network/VPN
 }
 
 variable "monitoring_cidr" {
   description = "CIDR block for monitoring access"
   type        = string
-  default     = "0.0.0.0/0"
+  default     = "10.0.0.0/16"
 }
 
 # RDS Variables

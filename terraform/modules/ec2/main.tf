@@ -1,4 +1,23 @@
 # EC2 Module for Application Servers
+# KMS Key for EBS Encryption
+resource "aws_kms_key" "ebs" {
+  description             = "KMS key for EBS volume encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  tags = merge(
+    var.common_tags,
+    {
+      Name = "${var.environment}-ebs-key"
+    }
+  )
+}
+
+resource "aws_kms_alias" "ebs" {
+  name          = "alias/${var.environment}-ebs-encryption"
+  target_key_id = aws_kms_key.ebs.key_id
+}
+
 # Data source to get latest Amazon Linux 2 AMI
 data "aws_ami" "amazon_linux_2" {
   most_recent = true
@@ -46,6 +65,7 @@ resource "aws_launch_template" "app_server" {
       volume_type           = "gp3"
       delete_on_termination = true
       encrypted             = true
+      kms_key_id            = aws_kms_key.ebs.arn
     }
   }
 
