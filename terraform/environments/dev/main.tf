@@ -1,4 +1,5 @@
 # Manual pipeline run - validate post-deployment security
+# Pipeline configured to only scan dev environment
 terraform {
   required_version = ">= 1.0"
   
