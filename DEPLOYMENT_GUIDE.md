@@ -8,10 +8,10 @@ This guide provides step-by-step instructions for deploying the 3-tier applicati
 - [ ] IAM user with EC2, VPC, RDS, ALB, IAM permissions
 - [ ] AWS CLI installed and configured
 - [ ] Terraform installed (v1.0+)
-- [ ] EC2 Key Pair created in target AWS region
+- [ ] EC2 Key Pair created in target AWS region (for both application and monitoring)
 - [ ] GitHub account (for CI/CD)
-- [ ] Docker and Docker Compose installed (for monitoring)
 - [ ] Git installed
+- [ ] SMTP credentials for alert email (optional for monitoring)
 
 ## Step 1: Prepare AWS Environment
 
@@ -112,6 +112,20 @@ app_desired_capacity    = 2
 # Bastion configuration
 bastion_instance_type   = "t3.micro"
 
+# Monitoring configuration (deployed on separate VPC: 10.200.0.0/16)
+monitoring_instance_type        = "t3.medium"
+monitoring_root_volume_size     = 50
+
+# AlertManager email configuration
+alert_email_to          = "ops-team@example.com"
+alert_critical_email_to = "sre-oncall@example.com"
+alert_from_email        = "alerts@example.com"
+
+# SMTP configuration for AlertManager email notifications
+smtp_host               = "smtp.gmail.com"
+smtp_port               = 587
+smtp_username           = "your-email@gmail.com"
+
 # Tags
 common_tags = {
   Project     = "3-Tier-Application"
@@ -121,6 +135,23 @@ common_tags = {
 ```
 
 ## Step 3: Deploy Infrastructure
+
+### 3.0 Set Environment Variables (CRITICAL)
+
+**Important**: Set Grafana password before deploying - this is required for the monitoring stack.
+
+```bash
+# Set Grafana admin password for monitoring dashboard
+export TF_VAR_grafana_password="YourSecureGrafanaPassword123!@"
+
+# Set database master password (alternative to terraform.tfvars)
+export TF_VAR_master_password="YourSecurePassword123!@"
+
+# Verify variables are set
+echo "Grafana Password: ${TF_VAR_grafana_password:?Error: TF_VAR_grafana_password not set}"
+```
+
+These environment variables will be used by Terraform during the apply step. They will be injected into the monitoring instance's Docker Compose configuration via the user data script.
 
 ### 3.1 Initialize Terraform
 
@@ -164,14 +195,35 @@ This shows all resources that will be created. Review carefully:
 terraform apply tfplan
 ```
 
-**Expected duration:** 15-20 minutes
+**Expected duration:** 25-40 minutes
+
+**What's being deployed:**
+1. **Main Application VPC** (10.0.0.0/16):
+   - Application Load Balancer
+   - Auto-Scaling Group with EC2 instances (2-4)
+   - RDS PostgreSQL Multi-AZ database
+   - Bastion host for secure SSH access
+   - Security groups and IAM roles
+
+2. **Monitoring VPC** (10.200.0.0/16) - Separate infrastructure:
+   - t3.medium EC2 instance
+   - Docker-based monitoring stack:
+     - Prometheus v2.48.0 (metrics collection)
+     - Grafana 10.2.0 (dashboards)
+     - Node Exporter v1.7.0 (system metrics)
+     - AlertManager v0.26.0 (alert management)
+   - Security groups (SSH, HTTP, HTTPS ports open to 0.0.0.0/0)
+   - Elastic IP for consistent public access
 
 **Important outputs will be displayed:**
-- VPC ID
-- Subnet IDs
+- Main VPC infrastructure IDs
 - Bastion public IP
 - ALB DNS name
 - RDS endpoint
+- **Monitoring instance public IP**
+- **Grafana URL**
+- **Prometheus URL**
+- **AlertManager URL**
 
 ### 3.5 Save Outputs
 
@@ -183,17 +235,102 @@ terraform output -json > outputs.json
 terraform output alb_dns_name
 terraform output bastion_public_ip
 terraform output rds_address
+
+# Monitoring outputs
+terraform output monitoring_instance_public_ip
+terraform output grafana_url
+terraform output prometheus_url
+terraform output alertmanager_url
 ```
 
-## Step 4: Initialize Database
+**Key Outputs:**
+- `alb_dns_name` - Frontend application URL
+- `bastion_public_ip` - SSH access point
+- `rds_address` - Database endpoint
+- `monitoring_instance_public_ip` - Monitoring instance IP (e.g., 3.212.99.113)
+- `grafana_url` - Grafana dashboard access (e.g., http://3.212.99.113:3000)
+- `prometheus_url` - Prometheus metrics (e.g., http://3.212.99.113:9090)
+- `alertmanager_url` - AlertManager (e.g., http://3.212.99.113:9093)
+- `monitoring_ssh_command` - Ready-to-use SSH command for monitoring instance
 
-### 4.1 Connect to Bastion Host
+## Step 4: Wait for Monitoring Stack Initialization
+
+The monitoring stack (Prometheus, Grafana, AlertManager) is deployed automatically via Docker on the monitoring instance.
+
+### 4.1 Monitor Initialization Progress
+
+**Expected timeline:**
+- Instance launch: ~2 minutes
+- Docker installation: ~3 minutes
+- Container image pulls: ~10 minutes (600MB total)
+- Services startup: ~2 minutes
+- **Total: 15-20 minutes**
+
+### 4.2 Verify Monitoring Services
+
+Check if services are responsive:
+
+```bash
+# Get monitoring instance IP
+MONITORING_IP=$(terraform output -raw monitoring_instance_public_ip)
+
+# Test HTTP connectivity
+curl -s http://${MONITORING_IP}:3000/api/health    # Grafana
+curl -s http://${MONITORING_IP}:9090/-/healthy     # Prometheus
+curl -s http://${MONITORING_IP}:9093/-/healthy     # AlertManager
+
+# If curl is not available, use wget
+wget -q -O - http://${MONITORING_IP}:3000/api/health
+```
+
+### 4.3 Access Monitoring Dashboard
+
+Once services are responding (after 15-20 minutes):
+
+**Grafana Dashboard:**
+```
+URL: http://<monitoring_ip>:3000
+Username: admin
+Password: <Your TF_VAR_grafana_password>
+```
+
+**Prometheus Metrics:**
+```
+URL: http://<monitoring_ip>:9090
+Check targets: http://<monitoring_ip>:9090/targets
+```
+
+**AlertManager:**
+```
+URL: http://<monitoring_ip>:9093
+```
+
+### 4.4 SSH to Monitoring Instance (if needed)
+
+```bash
+# Get monitoring instance IP and use stored SSH command
+$(terraform output -raw monitoring_ssh_command)
+
+# Or manually
+ssh -i ~/.ssh/my-terraform-key.pem ubuntu@<monitoring_ip>
+
+# Check Docker containers
+docker ps
+
+# View logs
+docker logs monitoring-deployment-prometheus-1
+docker logs monitoring-deployment-grafana-1
+```
+
+## Step 5: Initialize Database
+
+### 5.1 Connect to Bastion Host
 
 ```bash
 ssh -i ~/.ssh/my-terraform-key.pem ec2-user@$(terraform output -raw bastion_public_ip)
 ```
 
-### 4.2 Create Database Schema
+### 5.2 Create Database Schema
 
 From bastion host:
 
@@ -245,9 +382,9 @@ SELECT * FROM users;
 
 Type `exit` to disconnect from PostgreSQL.
 
-## Step 5: Deploy Application
+## Step 6: Deploy Application
 
-### 5.1 Verify Application Servers are Running
+### 6.1 Verify Application Servers are Running
 
 ```bash
 aws ec2 describe-instances \
@@ -256,7 +393,7 @@ aws ec2 describe-instances \
   --output table
 ```
 
-### 5.2 Deploy Backend API
+### 6.2 Deploy Backend API
 
 The backend application should be deployed via your CI/CD pipeline (GitHub Actions). If deploying manually:
 
@@ -282,15 +419,15 @@ Deploy frontend to a static hosting service or through ALB:
 # Copy files to the application servers and serve via HTTP
 ```
 
-## Step 6: Test Application
+## Step 7: Test Application
 
-### 6.1 Get ALB DNS Name
+### 7.1 Get ALB DNS Name
 
 ```bash
 terraform output alb_dns_name
 ```
 
-### 6.2 Access Application
+### 7.2 Access Application
 
 Open browser and navigate to:
 ```
@@ -318,7 +455,7 @@ curl http://<alb-dns-name>/users
 curl http://<alb-dns-name>/db-status
 ```
 
-## Step 7: Setup GitHub Actions (Optional)
+## Step 8: Setup GitHub Actions (Optional)
 
 ### 7.1 Fork Repository
 
@@ -358,7 +495,7 @@ git push origin main
 
 Monitor GitHub Actions tab for workflow execution.
 
-## Step 8: Setup Monitoring
+## Step 9: Configure Monitoring Alerts (Optional)
 
 ### 8.1 Prepare Monitoring Stack
 
@@ -405,7 +542,7 @@ Login with:
    - ALB request count
    - Application metrics
 
-## Step 9: Verification Checklist
+## Step 10: Post-Deployment Verification
 
 - [ ] VPC created with correct CIDR blocks
 - [ ] Subnets are in correct AZs

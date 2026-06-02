@@ -1,243 +1,214 @@
 # Deployment Quick Checklist
 
-**Estimated Time**: 2-3 hours for complete deployment  
-**Prerequisites**: AWS account, GitHub account, domain/SMTP
+**Estimated Time**: 1.5-2.5 hours for complete deployment  
+**Prerequisites**: AWS account, GitHub account, EC2 key pair, SMTP credentials (optional)
 
 ---
 
-## ✅ Phase 1: GitHub Secrets Configuration (5 minutes)
+## ✅ Phase 1: Environment Setup (10 minutes)
 
-- [ ] Go to GitHub → Repository Settings → Secrets and Variables → Actions
-- [ ] Add `AWS_ACCESS_KEY_ID`
-- [ ] Add `AWS_SECRET_ACCESS_KEY`
-- [ ] Add `MONITORING_HOST` (will update after infrastructure deployed)
-- [ ] Add `MONITORING_SSH_KEY` (base64-encoded SSH private key)
-- [ ] Add `SMTP_USERNAME` (your SMTP email)
-- [ ] Add `SMTP_PASSWORD` (SMTP app password)
-- [ ] Add `ALERT_EMAIL_TO` (operations team email)
-- [ ] Add `ALERT_CRITICAL_EMAIL_TO` (oncall email)
-- [ ] Add `SLACK_WEBHOOK_URL` (optional)
+### Set Required Environment Variables
 
----
+```bash
+# CRITICAL: Set these before running terraform apply
+export TF_VAR_grafana_password="YourSecureGrafanaPassword123!@"
+export TF_VAR_master_password="YourSecurePassword123!@"
 
-## ✅ Phase 2: Customize Terraform Variables (10 minutes)
+# Verify they are set
+echo "Grafana: $TF_VAR_grafana_password"
+echo "Database: $TF_VAR_master_password"
+```
+
+### Prepare Terraform Configuration
 
 ```bash
 cd terraform/environments/dev
 cp terraform.tfvars.example terraform.tfvars
-nano terraform.tfvars
 ```
 
-Update values:
-- [ ] `project_name` → "your-project"
-- [ ] `environment` → "dev" (or staging/prod)
-- [ ] `aws_region` → "us-east-1"
-- [ ] `instance_type` → "t2.micro" (or t3.small for better performance)
+Update in `terraform.tfvars`:
+- [ ] `aws_region` → "us-east-1" (or your region)
 - [ ] `key_pair_name` → "your-ec2-keypair"
-- [ ] `database_password` → Generate secure password
+- [ ] `alert_email_to` → "ops-team@company.com"
+- [ ] `alert_critical_email_to` → "sre-oncall@company.com"
+- [ ] `smtp_host` → "smtp.gmail.com"
+- [ ] `smtp_port` → 587
+- [ ] `smtp_username` → "your-email@gmail.com"
 
 ---
 
-## ✅ Phase 3: Deploy Infrastructure with Terraform (30 minutes)
+## ✅ Phase 2: Deploy Infrastructure with Terraform (30-40 minutes)
 
 ```bash
 # Initialize Terraform
 terraform init
 
-# Review plan
+# Verify configuration
+terraform validate
+
+# Review changes
 terraform plan -out=tfplan
 
-# Apply changes
+# Deploy all infrastructure (VPC, EC2, RDS, Monitoring)
 terraform apply tfplan
 
 # Save outputs
 terraform output -json > outputs.json
-cat outputs.json
+```
+
+**Deployment includes:**
+- [ ] Main VPC (10.0.0.0/16) with public/private subnets
+- [ ] Application Load Balancer
+- [ ] Auto-Scaling Group with EC2 instances
+- [ ] RDS PostgreSQL Multi-AZ database
+- [ ] Bastion host for SSH access
+- [ ] **Monitoring VPC (10.200.0.0/16) with separate infrastructure:**
+  - [ ] t3.medium EC2 instance
+  - [ ] Docker-based Prometheus, Grafana, AlertManager, Node Exporter
+  - [ ] Security groups for public HTTP/HTTPS access
+  - [ ] Elastic IP for consistent access
+
+**Expected time:** 25-40 minutes (RDS Multi-AZ takes longest)
+
+Verify all created:
+- [ ] `terraform output | grep -E "alb_dns|bastion_public|monitoring_instance|grafana_url"`
+
+---
+
+## ✅ Phase 3: Wait for Monitoring Services (15-20 minutes)
+
+**Docker services initialize automatically via user data script:**
+
+```bash
+# Get monitoring instance IP
+MONITORING_IP=$(terraform output -raw monitoring_instance_public_ip)
+
+# Check service status every 2 minutes
+for i in {1..10}; do
+  echo "Check $i..."
+  curl -s -o /dev/null -w "%{http_code}" http://$MONITORING_IP:3000/api/health
+  sleep 120
+done
+```
+
+**Expected timeline:**
+- Instance launch: ~2 minutes
+- Docker installation: ~3 minutes
+- Image pulls: ~10 minutes (600MB)
+- Service startup: ~2 minutes
+
+Services are ready when:
+- [ ] Grafana responds: `curl -s http://$MONITORING_IP:3000/api/health`
+- [ ] Prometheus responds: `curl -s http://$MONITORING_IP:9090/-/healthy`
+- [ ] AlertManager responds: `curl -s http://$MONITORING_IP:9093/-/healthy`
+
+---
+
+## ✅ Phase 4: Access Monitoring Services (5 minutes)
+
+```bash
+# Get URLs from Terraform outputs
+terraform output grafana_url
+terraform output prometheus_url
+terraform output alertmanager_url
+```
+
+**Access Services:**
+- [ ] **Grafana**: http://<monitoring_ip>:3000
+  - Username: `admin`
+  - Password: `<Your TF_VAR_grafana_password>`
+- [ ] **Prometheus**: http://<monitoring_ip>:9090
+  - Check targets: http://<monitoring_ip>:9090/targets
+  - Should show 4 targets (prometheus, node-exporter, alertmanager, grafana)
+- [ ] **AlertManager**: http://<monitoring_ip>:9093
+  - Check alerts and configuration
+
+---
+
+## ✅ Phase 5: Initialize Database (10 minutes)
+
+```bash
+# Get connection details
+BASTION_IP=$(terraform output -raw bastion_public_ip)
+RDS_ENDPOINT=$(terraform output -raw rds_address)
+
+# Connect via bastion
+ssh -i ~/.ssh/my-ec2-key.pem ec2-user@$BASTION_IP
+
+# From bastion, connect to RDS
+psql -h $RDS_ENDPOINT -U postgres -d appdb
+# Enter password: <Your TF_VAR_master_password>
+```
+
+**Create database schema:**
+- [ ] Create users table with appropriate columns
+- [ ] Create logs table for application logging
+- [ ] Insert sample data for testing
+- [ ] Verify with `SELECT * FROM users;`
+
+Exit with `\q`
+
+---
+
+## ✅ Phase 6: Verify Application Services (10 minutes)
+
+```bash
+# Get ALB DNS name
+ALB_DNS=$(terraform output -raw alb_dns_name)
+
+# Test health check
+curl -s http://$ALB_DNS/health | jq .
+
+# Check database connectivity
+curl -s http://$ALB_DNS/db-status | jq .
+
+# View application metrics
+curl -s http://$ALB_DNS/metrics | head -20
 ```
 
 Verify:
-- [ ] VPC created
-- [ ] Subnets created (public/private)
-- [ ] Security groups created
-- [ ] EC2 instances launching
-- [ ] RDS database launching
-- [ ] ALB created
-- [ ] Bastion host created
-
-Expected time: 20-30 minutes
+- [ ] Application is healthy
+- [ ] Database is connected
+- [ ] Metrics endpoint responding
+- [ ] All instances in ALB target group are "healthy"
 
 ---
 
-## ✅ Phase 4: Initialize Database (10 minutes)
+## ✅ Phase 7: Configure Grafana Dashboards (10 minutes)
 
-```bash
-# Get values from Terraform outputs
-ALB_DNS=$(jq -r '.alb_dns_name.value' outputs.json)
-RDS_ENDPOINT=$(jq -r '.rds_endpoint.value' outputs.json)
-BASTION_IP=$(jq -r '.bastion_public_ip.value' outputs.json)
+### Add Prometheus Data Source
 
-# Connect to database
-PGPASSWORD="your_password" psql -h $RDS_ENDPOINT \
-  -U postgres -d postgres
+1. [ ] Login to Grafana: http://<monitoring_ip>:3000
+2. [ ] Go to Settings (gear icon) → Data Sources
+3. [ ] Click "Add data source" → Select "Prometheus"
+4. [ ] URL: `http://localhost:9090` (or http://prometheus:9090)
+5. [ ] Click "Save & Test" → Should see "Data source is working"
 
-# Run initialization script
-\i ../../../database/schema.sql
+### Import Dashboards
 
-# Create application user
-CREATE USER appuser WITH PASSWORD 'your-secure-password';
-GRANT ALL PRIVILEGES ON DATABASE appdb TO appuser;
-
-# Exit
-\q
-```
-
-Verify:
-- [ ] Database tables created
-- [ ] Application user created
-- [ ] Connection test successful
+1. [ ] Go to Dashboards → Import
+2. [ ] Import from Grafana: Search for "Node Exporter Full" (ID: 1860)
+3. [ ] Create custom dashboard for application metrics
+4. [ ] Add panels for:
+   - [ ] CPU usage
+   - [ ] Memory usage
+   - [ ] Network traffic
+   - [ ] HTTP request rates
 
 ---
 
-## ✅ Phase 5: Deploy Application (15 minutes)
+## ✅ Phase 8: Configure Alerts (Optional - 5 minutes)
 
 ```bash
-# Deploy via GitHub Actions (automatic)
-git commit --allow-empty -m "Deploy: Initial application"
-git push origin main
+# SSH into monitoring instance
+MONITORING_IP=$(terraform output -raw monitoring_instance_public_ip)
+ssh -i ~/.ssh/my-ec2-key.pem ubuntu@$MONITORING_IP
 
-# Monitor in GitHub Actions tab
-# Expected: build → test → deploy
-```
-
-Verify:
-- [ ] GitHub Actions workflow completes
-- [ ] Application Docker image built
-- [ ] Application deployed to EC2
-- [ ] ALB showing healthy targets
-
-Expected time: 10-15 minutes
-
----
-
-## ✅ Phase 6: Deploy Monitoring Stack (20 minutes)
-
-### Option A: Docker Compose (Recommended for testing)
-
-```bash
-cd monitoring/grafana
-
-# Setup environment
-cp .env.example .env
-nano .env  # Update SMTP credentials
-
-# Run setup script
-bash setup.sh
-```
-
-Verify after 30 seconds:
-- [ ] Prometheus: `curl http://localhost:9090/-/healthy`
-- [ ] Grafana: `curl http://localhost:3000/api/health`
-- [ ] AlertManager: `curl http://localhost:9093/-/healthy`
-- [ ] Node Exporter: `curl http://localhost:9100/metrics`
-
-### Option B: Terraform (Recommended for production)
-
-```bash
-cd terraform/environments/dev
-
-# Add monitoring module to main.tf
-# Edit main.tf and uncomment monitoring module
-# Or add:
-module "monitoring" {
-  source = "../modules/monitoring"
-  
-  project_name            = var.project_name
-  environment             = var.environment
-  key_pair_name           = var.key_pair_name
-  alert_email_to          = "ops@yourdomain.com"
-  alert_critical_email_to = "oncall@yourdomain.com"
-  smtp_username           = var.smtp_username
-  grafana_password        = var.grafana_password
-}
-
-# Deploy
-terraform apply
-```
-
----
-
-## ✅ Phase 7: Configure Prometheus Targets (10 minutes)
-
-```bash
-# SSH into monitoring server
-MONITORING_IP=$(jq -r '.monitoring_instance_public_ip.value' outputs.json)
-ssh -i ~/.ssh/3tier-app-key.pem ubuntu@$MONITORING_IP
-
-# Update Prometheus configuration
-cd ~/deployment/monitoring/grafana
-nano prometheus.yml
-
-# Add application server targets:
-# - job_name: 'backend-api'
-#   static_configs:
-#     - targets: ['APP_SERVER_IP:8080']
-#       labels:
-#         service: 'backend'
-
-# Restart Prometheus
-docker-compose restart prometheus
-```
-
-Verify in Prometheus UI:
-- [ ] Go to http://MONITORING_IP:9090/targets
-- [ ] All targets should show "UP" in green
-- [ ] Check "Scraping interval" shows 15s or 30s
-
----
-
-## ✅ Phase 8: Deploy Node Exporter on App Servers (10 minutes)
-
-```bash
-# SSH into application server via Bastion
-BASTION_IP=$(jq -r '.bastion_public_ip.value' outputs.json)
-APP_SERVER_IP=$(jq -r '.app_server_private_ips.value[0]' outputs.json)
-
-ssh -i ~/.ssh/3tier-app-key.pem \
-  -J ubuntu@$BASTION_IP ubuntu@$APP_SERVER_IP
-
-# Download and run Node Exporter installer
-curl -O https://raw.githubusercontent.com/your-repo/monitoring/grafana/install-node-exporter.sh
-sudo bash install-node-exporter.sh
-
-# Verify
-curl http://localhost:9100/metrics | head -10
-```
-
-Verify:
-- [ ] Node Exporter running: `curl http://APP_SERVER_IP:9100/metrics`
-- [ ] Prometheus scraping: Check targets in Prometheus UI
-- [ ] Metrics appearing: `node_cpu_seconds_total` in Prometheus
-
----
-
-## ✅ Phase 9: Configure Email Alerts (5 minutes)
-
-```bash
-# SSH into monitoring server
-ssh -i ~/.ssh/3tier-app-key.pem ubuntu@$MONITORING_IP
-
-cd ~/deployment/monitoring/grafana
-
-# Update .env with SMTP credentials
-nano .env
-# Update:
-# SMTP_HOST=smtp.gmail.com
-# SMTP_PORT=587
-# SMTP_USERNAME=your-email@gmail.com
-# SMTP_PASSWORD=your-app-password
+# Update AlertManager configuration with SMTP
+nano /home/ubuntu/monitoring-deployment/alertmanager-config.yml
 
 # Restart AlertManager
-docker-compose restart alertmanager
+docker restart monitoring-deployment-alertmanager-1
 
 # Test alert
 curl -X POST http://localhost:9093/api/v1/alerts \
@@ -245,123 +216,136 @@ curl -X POST http://localhost:9093/api/v1/alerts \
   -d '{
     "alerts": [{
       "status": "firing",
-      "labels": {"alertname": "TestAlert", "severity": "critical"},
-      "annotations": {"summary": "Test alert from monitoring"}
+      "labels": {"alertname": "TestAlert"},
+      "annotations": {"summary": "Test alert"}
     }]
   }'
 ```
 
 Verify:
-- [ ] Test email received in inbox
-- [ ] Email contains alert details
-- [ ] Check alertmanager logs: `docker-compose logs alertmanager`
+- [ ] Test email received
+- [ ] Alert appears in AlertManager UI: http://<monitoring_ip>:9093
 
 ---
 
-## ✅ Phase 10: Access and Configure Grafana (10 minutes)
+## ✅ Phase 9: GitHub Actions Setup (Optional - 5 minutes)
 
 ```bash
-# Get Grafana URL
-MONITORING_IP=$(jq -r '.monitoring_instance_public_ip.value' outputs.json)
-echo "Grafana: http://$MONITORING_IP:3000"
+# Add GitHub secrets in repository settings
 ```
 
-In browser:
-1. [ ] Open http://MONITORING_IP:3000
-2. [ ] Login: admin / (password from .env)
-3. [ ] Go to Data Sources → Prometheus
-4. [ ] URL: http://prometheus:9090
-5. [ ] Click "Save & Test" → "Data source is working"
-6. [ ] Go to Dashboards → Import
-7. [ ] Upload from `monitoring/grafana/dashboards/`
+Required secrets:
+- [ ] `AWS_ACCESS_KEY_ID`
+- [ ] `AWS_SECRET_ACCESS_KEY`
+- [ ] `SLACK_WEBHOOK_URL` (optional)
 
 ---
 
-## ✅ Phase 11: Test Application Endpoints (5 minutes)
+## ✅ Phase 10: Post-Deployment Verification (5 minutes)
+
+**Run all verification commands:**
 
 ```bash
-# Get ALB DNS
-ALB_DNS=$(jq -r '.alb_dns_name.value' outputs.json)
+# Application health
+ALB_DNS=$(terraform output -raw alb_dns_name)
+curl -s http://$ALB_DNS/health | jq .
 
-# Test health endpoint
-curl http://$ALB_DNS/health
+# Database connectivity
+curl -s http://$ALB_DNS/db-status | jq .
 
-# Test system info endpoint
-curl http://$ALB_DNS/system-info
+# Prometheus metrics
+MONITORING_IP=$(terraform output -raw monitoring_instance_public_ip)
+curl -s http://$MONITORING_IP:9090/-/healthy
 
-# Test metrics endpoint
-curl http://$ALB_DNS/metrics | head -20
+# Grafana ready
+curl -s http://$MONITORING_IP:3000/api/health | jq .
+
+# Verify monitoring is collecting metrics
+curl -s http://$MONITORING_IP:9090/api/v1/targets | jq .
+
+# Save for reference
+terraform output > infrastructure-summary.txt
 ```
 
-Expected responses:
-- [ ] /health: `{"status": "healthy", ...}`
-- [ ] /system-info: `{"server_version": "1.0.0", ...}`
-- [ ] /metrics: Prometheus format metrics
+**Verification Checklist:**
+- [ ] Application accessible via ALB
+- [ ] Database initialized and connected
+- [ ] All monitoring services running
+- [ ] Prometheus collecting metrics (all targets UP)
+- [ ] Grafana dashboards showing data
+- [ ] Alert email notifications configured
+- [ ] All infrastructure created successfully
 
 ---
 
-## ✅ Phase 12: Verify Monitoring (5 minutes)
+## 🎉 Deployment Complete!
+
+**Your 3-tier infrastructure is now deployed and monitored:**
+
+### Access Points:
+- **Application**: http://<ALB_DNS_NAME>
+- **Grafana Dashboard**: http://<MONITORING_IP>:3000
+  - Username: `admin`
+  - Password: `<Your TF_VAR_grafana_password>`
+- **Prometheus**: http://<MONITORING_IP>:9090
+- **AlertManager**: http://<MONITORING_IP>:9093
+
+### Infrastructure Summary:
+- **Main VPC**: 10.0.0.0/16 (Application)
+- **Monitoring VPC**: 10.200.0.0/16 (Separate monitoring)
+- **Database**: RDS PostgreSQL Multi-AZ
+- **Load Balancer**: AWS Application Load Balancer
+- **Bastion Host**: SSH access point
+- **Auto-Scaling**: 2-4 application servers
+- **Monitoring**: Prometheus, Grafana, AlertManager, Node Exporter
+
+### Next Steps:
+1. Login to Grafana and configure custom dashboards
+2. Set up Prometheus alert rules
+3. Configure AlertManager email notifications
+4. Deploy your application code via CI/CD pipeline
+5. Monitor and optimize based on collected metrics
+6. Scale infrastructure as needed based on load
+
+### Useful Commands:
 
 ```bash
-# Check Prometheus targets
-curl http://$MONITORING_IP:9090/api/v1/targets | jq .
+# View infrastructure outputs
+terraform output
 
-# Check collected metrics
-curl "http://$MONITORING_IP:9090/api/v1/query?query=up" | jq .
+# SSH to monitoring instance
+$(terraform output -raw monitoring_ssh_command)
 
-# Check Grafana data source
-curl http://$MONITORING_IP:3000/api/datasources | jq .
+# SSH to bastion host
+ssh -i ~/.ssh/my-ec2-key.pem ec2-user@$(terraform output -raw bastion_public_ip)
+
+# SSH to app server via bastion
+ssh -i ~/.ssh/my-ec2-key.pem -J ec2-user@<BASTION_IP> ec2-user@<APP_SERVER_IP>
+
+# Connect to RDS database
+psql -h $(terraform output -raw rds_address) -U postgres -d appdb
+
+# View monitoring logs
+ssh -i ~/.ssh/my-ec2-key.pem ubuntu@<MONITORING_IP>
+docker logs monitoring-deployment-prometheus-1
+docker logs monitoring-deployment-grafana-1
+docker logs monitoring-deployment-alertmanager-1
 ```
 
-Verify:
-- [ ] All targets showing "UP" state
-- [ ] Metrics being collected and stored
-- [ ] Grafana showing data in dashboards
-- [ ] Alerts evaluating (check Prometheus alerts tab)
+### Documentation:
+- **Full Setup**: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+- **Full Documentation**: [README.md](README.md)
+- **Architecture Details**: [ARCHITECTURE.md](ARCHITECTURE.md)
+- **CI/CD Pipeline**: [CI_CD_SETUP_GUIDE.md](CI_CD_SETUP_GUIDE.md)
+- **GitHub Setup**: [GITHUB_SETUP_GUIDE.md](GITHUB_SETUP_GUIDE.md)
 
----
+### Troubleshooting:
+- Check [README.md](README.md#troubleshooting) troubleshooting section
+- Review [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for detailed steps
+- SSH to instances to check logs and services
+- Monitor CloudWatch logs in AWS Console
 
-## ✅ Phase 13: Test CI/CD Workflow (10 minutes)
-
-```bash
-# Make a small change to trigger workflow
-echo "# Test deployment" >> application/backend/README.md
-
-# Commit and push
-git add .
-git commit -m "Test: Trigger CI/CD workflow"
-git push origin main
-
-# Monitor workflow
-# Go to GitHub → Actions tab
-# Watch: validate → build → deploy
-```
-
-Verify:
-- [ ] Workflow starts automatically
-- [ ] Build job completes
-- [ ] Deploy job completes
-- [ ] Application remains healthy
-- [ ] Slack notification received (if configured)
-
----
-
-## ✅ Phase 14: Load Testing & Validation (15 minutes)
-
-```bash
-# Install Apache Bench
-sudo apt-get install apache2-utils
-
-# Run load test
-ALB_DNS=$(jq -r '.alb_dns_name.value' outputs.json)
-ab -n 1000 -c 10 http://$ALB_DNS/
-
-# Monitor during load test
-# Open Grafana dashboard in another terminal
-# Watch: CPU, Memory, Request Rate, Response Time
-```
-
-Verify:
+**Total Estimated Time**: 1.5-2.5 hours ✅
 - [ ] Application handles 1000 requests
 - [ ] Response times remain under 2s
 - [ ] No 5xx errors
@@ -370,90 +354,6 @@ Verify:
 
 ---
 
-## ✅ Final Verification Checklist
-
-### Application Layer:
-- [ ] Application responding to requests
-- [ ] Database queries working
-- [ ] Response times acceptable (<2s)
-- [ ] No 5xx errors in logs
-
-### Infrastructure Layer:
-- [ ] EC2 instances running and healthy
-- [ ] RDS database operational and backed up
-- [ ] ALB routing traffic correctly
-- [ ] Auto-scaling group functioning
-
-### Monitoring Layer:
-- [ ] Prometheus collecting metrics
-- [ ] Grafana dashboards showing data
-- [ ] AlertManager routing alerts
-- [ ] Email alerts being sent
-
-### CI/CD Layer:
-- [ ] GitHub workflows executing
-- [ ] Deployments completing successfully
-- [ ] Artifacts being stored
-- [ ] Notifications being sent
-
-### Security:
-- [ ] SSH access restricted
-- [ ] Database accessible only from app servers
-- [ ] HTTPS configured (if domain available)
-- [ ] Sensitive data in GitHub Secrets
-
----
-
-## 🚀 Go Live Checklist
-
-Before going to production:
-
-- [ ] Load testing completed (1000+ req/s)
-- [ ] Alert thresholds calibrated to baseline
-- [ ] Team trained on runbook procedures
-- [ ] Backup/recovery procedures tested
-- [ ] Monitoring dashboards reviewed
-- [ ] Escalation procedures documented
-- [ ] Incident response plan prepared
-- [ ] Cost monitoring alerts configured
-- [ ] DNS records updated (if using domain)
-- [ ] SSL/TLS certificate configured
-
----
-
-## 📞 Troubleshooting Quick Links
-
-If something fails, check:
-
-1. **GitHub Actions fails**:
-   - Check GitHub Actions logs
-   - Verify AWS credentials in secrets
-   - Verify Terraform syntax: `terraform validate`
-
-2. **Application not responding**:
-   - Check ALB target health in AWS console
-   - Check EC2 instance logs
-   - Check security group rules
-
-3. **Monitoring not collecting metrics**:
-   - Check Prometheus targets: `http://prometheus:9090/targets`
-   - Check Node Exporter running: `curl APP_IP:9100/metrics`
-   - Check Prometheus scrape config
-
-4. **Alerts not sending emails**:
-   - Check SMTP credentials in .env
-   - Check AlertManager logs
-   - Test SMTP: `telnet SMTP_HOST SMTP_PORT`
-
-5. **Database connection issues**:
-   - Check RDS security group rules
-   - Verify database credentials
-   - Test connection: `psql -h RDS_ENDPOINT -U appuser`
-
-For detailed help, see **DEPLOYMENT_RUNBOOK.md** → Troubleshooting section.
-
----
-
-**⏱️ Total Estimated Time**: 2-3 hours  
-**✅ Status**: All steps ready for execution  
-**🎯 Next Step**: Start with Phase 1 - GitHub Secrets Configuration
+**⏱️ Total Estimated Time**: 1.5-2.5 hours  
+**✅ Status**: All phases ready for execution  
+**🎯 First Step**: Phase 1 - Environment Setup

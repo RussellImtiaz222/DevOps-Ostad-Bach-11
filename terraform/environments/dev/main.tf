@@ -309,33 +309,33 @@ module "ec2" {
 }
 
 # Monitoring Module
-# NOTE: Disabled due to VPC architecture conflict - monitoring module creates separate VPC
-# This needs to be redesigned to use main VPC instead of creating its own
-# module "monitoring" {
-#   source = "../../modules/monitoring"
-#
-#   project_name              = "3-tier-app"
-#   environment               = var.environment
-#   vpc_cidr                  = "10.200.0.0/16"
-#   monitoring_subnet_cidr    = "10.200.1.0/24"
-#   instance_type             = "t3.medium"
-#   root_volume_size          = 50
-#   key_pair_name             = var.key_pair_name
-#   allowed_ssh_cidr_blocks   = var.allowed_ssh_cidr
-#   allowed_access_cidr_blocks = [var.vpc_cidr]
-#   
-#   # SMTP Configuration
-#   smtp_host           = var.smtp_host != "" ? var.smtp_host : "smtp.gmail.com"
-#   smtp_port           = var.smtp_port
-#   smtp_username       = var.smtp_username != "" ? var.smtp_username : "your-email@gmail.com"
-#   alert_from_email    = var.alert_from_email != "" ? var.alert_from_email : "alerts@example.com"
-#   alert_email_to      = var.alert_email_to != "" ? var.alert_email_to : "ops@example.com"
-#   alert_critical_email_to = var.alert_critical_email_to != "" ? var.alert_critical_email_to : "oncall@example.com"
-#   
-#   grafana_password    = var.grafana_password
-#   alarm_actions       = []
-#   
-#   tags                = local.common_tags
-#
-#   depends_on = [module.vpc, module.security_groups]
-# }
+# NOTE: Separate VPC (10.200.0.0/16) for monitoring isolation
+# The monitoring instance is deployed to public subnet for direct web/SSH access
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  project_name              = "3-tier-app"
+  environment               = var.environment
+  vpc_cidr                  = "10.200.0.0/16"
+  monitoring_subnet_cidr    = "10.200.1.0/24"
+  instance_type             = "t3.medium"
+  root_volume_size          = 50
+  key_pair_name             = var.key_pair_name
+  allowed_ssh_cidr_blocks   = var.allowed_ssh_cidr
+  allowed_access_cidr_blocks = [var.vpc_cidr]
+  
+  # SMTP Configuration
+  smtp_host           = var.smtp_host != "" ? var.smtp_host : "smtp.gmail.com"
+  smtp_port           = var.smtp_port
+  smtp_username       = var.smtp_username != "" ? var.smtp_username : "your-email@gmail.com"
+  alert_from_email    = var.alert_from_email != "" ? var.alert_from_email : "alerts@example.com"
+  alert_email_to      = var.alert_email_to != "" ? var.alert_email_to : "ops@example.com"
+  alert_critical_email_to = var.alert_critical_email_to != "" ? var.alert_critical_email_to : "oncall@example.com"
+  
+  grafana_password    = var.grafana_password
+  alarm_actions       = []
+  
+  tags                = local.common_tags
+
+  depends_on = [module.vpc, module.security_groups]
+}
