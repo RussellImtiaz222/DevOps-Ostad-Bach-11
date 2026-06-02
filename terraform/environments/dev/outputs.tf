@@ -64,43 +64,44 @@ output "asg_name" {
   value       = module.ec2.asg_name
 }
 
-# Monitoring Stack Outputs
-output "monitoring_instance_id" {
-  description = "Monitoring server instance ID"
-  value       = module.monitoring.monitoring_instance_id
-}
-
-output "monitoring_instance_public_ip" {
-  description = "Monitoring server public IP address"
-  value       = module.monitoring.monitoring_instance_public_ip
-}
-
-output "monitoring_instance_private_ip" {
-  description = "Monitoring server private IP address"
-  value       = module.monitoring.monitoring_instance_private_ip
-}
-
-output "monitoring_security_group_id" {
-  description = "Monitoring server security group ID"
-  value       = module.monitoring.monitoring_security_group_id
-}
-
-output "prometheus_url" {
-  description = "Prometheus dashboard URL"
-  value       = "http://${module.monitoring.monitoring_instance_public_ip}:9090"
-}
-
-output "grafana_url" {
-  description = "Grafana dashboard URL"
-  value       = "http://${module.monitoring.monitoring_instance_public_ip}:3000"
-}
-
-output "alertmanager_url" {
-  description = "AlertManager dashboard URL"
-  value       = "http://${module.monitoring.monitoring_instance_public_ip}:9093"
-}
-
-output "monitoring_ssh_command" {
-  description = "SSH command to access monitoring server"
-  value       = "ssh -i ~/.ssh/3tier-app-key.pem ubuntu@${module.monitoring.monitoring_instance_public_ip}"
-}
+# Monitoring Stack Outputs - DISABLED
+# NOTE: Monitoring module disabled due to VPC architecture conflict
+# output "monitoring_instance_id" {
+#   description = "Monitoring server instance ID"
+#   value       = module.monitoring.monitoring_instance_id
+# }
+#
+# output "monitoring_instance_public_ip" {
+#   description = "Monitoring server public IP address"
+#   value       = module.monitoring.monitoring_instance_public_ip
+# }
+#
+# output "monitoring_instance_private_ip" {
+#   description = "Monitoring server private IP address"
+#   value       = module.monitoring.monitoring_instance_private_ip
+# }
+#
+# output "monitoring_security_group_id" {
+#   description = "Monitoring server security group ID"
+#   value       = module.monitoring.monitoring_security_group_id
+# }
+#
+# output "prometheus_url" {
+#   description = "Prometheus dashboard URL"
+#   value       = "http://${module.monitoring.monitoring_instance_public_ip}:9090"
+# }
+#
+# output "grafana_url" {
+#   description = "Grafana dashboard URL"
+#   value       = "http://${module.monitoring.monitoring_instance_public_ip}:3000"
+# }
+#
+# output "alertmanager_url" {
+#   description = "AlertManager dashboard URL"
+#   value       = "http://${module.monitoring.monitoring_instance_public_ip}:9093"
+# }
+#
+# output "monitoring_ssh_command" {
+#   description = "SSH command to access monitoring server"
+#   value       = "ssh -i ~/.ssh/3tier-app-key.pem ubuntu@${module.monitoring.monitoring_instance_public_ip}"
+# }
