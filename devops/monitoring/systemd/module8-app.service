@@ -1,0 +1,13 @@
+[Unit]
+Description=Module 8 demo application service
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/module8-devops/app
+ExecStart=/opt/module8-devops/app/.venv/bin/python -m http.server 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

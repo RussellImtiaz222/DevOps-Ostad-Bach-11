@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Terraform local state and provider cache.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+
+# Keep private candidate data local by default.
+data/profile.json
+data/resume/*
+!data/resume/.gitkeep
+!data/resume/sample-resume.txt

@@ -1,0 +1,78 @@
+name: Deploy monitoring stack
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install application
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Validate Python package
+        run: python -m job_search_automation --help
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform format check
+        working-directory: devops/terraform
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        working-directory: devops/terraform
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        working-directory: devops/terraform
+        run: terraform validate
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy deployment files
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" "sudo mkdir -p /opt/module8-devops && sudo chown ${{ secrets.SERVER_USER }}:${{ secrets.SERVER_USER }} /opt/module8-devops"
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" devops/ "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/module8-devops/"
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" src pyproject.toml README.md "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/opt/module8-devops/app/"
+
+      - name: Install monitoring stack
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            "cd /opt/module8-devops && sudo GRAFANA_ADMIN_PASSWORD='${{ secrets.GRAFANA_ADMIN_PASSWORD }}' bash scripts/install_monitoring.sh"
+
+      - name: Deploy demo application service
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" <<'REMOTE'
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y python3-venv
+          cd /opt/module8-devops/app
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -e .
+          sudo cp /opt/module8-devops/monitoring/systemd/module8-app.service /etc/systemd/system/module8-app.service
+          sudo systemctl daemon-reload
+          sudo systemctl enable module8-app
+          sudo systemctl restart module8-app
+          REMOTE
