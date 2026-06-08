@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - DevOps-Module-8
   workflow_dispatch:
 
 jobs:
