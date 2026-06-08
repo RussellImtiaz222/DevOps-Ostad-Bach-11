@@ -37,8 +37,10 @@ install_prometheus() {
   curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
     -o /tmp/prometheus.tar.gz
   tar -xzf /tmp/prometheus.tar.gz -C /tmp
-  cp "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-amd64/prometheus" /usr/local/bin/
-  cp "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/
+  install -m 0755 "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-amd64/prometheus" /usr/local/bin/prometheus.new
+  install -m 0755 "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool.new
+  mv -f /usr/local/bin/prometheus.new /usr/local/bin/prometheus
+  mv -f /usr/local/bin/promtool.new /usr/local/bin/promtool
   cp -r "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-amd64/consoles" /etc/prometheus/
   cp -r "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-amd64/console_libraries" /etc/prometheus/
 
@@ -54,7 +56,8 @@ install_node_exporter() {
   curl -fsSL "https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz" \
     -o /tmp/node_exporter.tar.gz
   tar -xzf /tmp/node_exporter.tar.gz -C /tmp
-  cp "/tmp/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64/node_exporter" /usr/local/bin/
+  install -m 0755 "/tmp/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64/node_exporter" /usr/local/bin/node_exporter.new
+  mv -f /usr/local/bin/node_exporter.new /usr/local/bin/node_exporter
   cp /opt/module8-devops/monitoring/systemd/node_exporter.service /etc/systemd/system/node_exporter.service
   systemctl enable node_exporter
 }
@@ -65,11 +68,13 @@ install_loki_and_promtail() {
 
   curl -fsSL "https://github.com/grafana/loki/releases/download/v${LOKI_VERSION}/loki-linux-amd64.zip" -o /tmp/loki.zip
   unzip -o /tmp/loki.zip -d /tmp
-  install -m 0755 /tmp/loki-linux-amd64 /usr/local/bin/loki
+  install -m 0755 /tmp/loki-linux-amd64 /usr/local/bin/loki.new
+  mv -f /usr/local/bin/loki.new /usr/local/bin/loki
 
   curl -fsSL "https://github.com/grafana/loki/releases/download/v${PROMTAIL_VERSION}/promtail-linux-amd64.zip" -o /tmp/promtail.zip
   unzip -o /tmp/promtail.zip -d /tmp
-  install -m 0755 /tmp/promtail-linux-amd64 /usr/local/bin/promtail
+  install -m 0755 /tmp/promtail-linux-amd64 /usr/local/bin/promtail.new
+  mv -f /usr/local/bin/promtail.new /usr/local/bin/promtail
 
   cp /opt/module8-devops/monitoring/loki.yml /etc/loki/loki.yml
   cp /opt/module8-devops/monitoring/promtail.yml /etc/promtail/promtail.yml
