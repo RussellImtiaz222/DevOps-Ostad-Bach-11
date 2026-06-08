@@ -14,6 +14,10 @@ install_base_packages() {
   apt-get install -y apt-transport-https ca-certificates curl gpg unzip
 }
 
+stop_monitoring_services() {
+  systemctl stop grafana-server prometheus loki promtail node_exporter 2>/dev/null || true
+}
+
 install_grafana() {
   mkdir -p /etc/apt/keyrings
   curl -fsSL https://apt.grafana.com/gpg.key | gpg --batch --yes --dearmor -o /etc/apt/keyrings/grafana.gpg
@@ -84,6 +88,7 @@ provision_grafana() {
 }
 
 main() {
+  stop_monitoring_services
   install_base_packages
   install_grafana
   install_prometheus
