@@ -16,7 +16,7 @@ install_base_packages() {
 
 install_grafana() {
   mkdir -p /etc/apt/keyrings
-  curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
+  curl -fsSL https://apt.grafana.com/gpg.key | gpg --batch --yes --dearmor -o /etc/apt/keyrings/grafana.gpg
   echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" \
     > /etc/apt/sources.list.d/grafana.list
   apt-get update
@@ -77,9 +77,9 @@ install_loki_and_promtail() {
 
 provision_grafana() {
   mkdir -p /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards /var/lib/grafana/dashboards
-  cp /opt/module8-devops/grafana/provisioning/datasources/datasources.yml /etc/grafana/provisioning/datasources/datasources.yml
-  cp /opt/module8-devops/grafana/provisioning/dashboards/dashboards.yml /etc/grafana/provisioning/dashboards/dashboards.yml
-  cp /opt/module8-devops/grafana/dashboards/module8-system-overview.json /var/lib/grafana/dashboards/module8-system-overview.json
+  cp /opt/module8-devops/monitoring/grafana/provisioning/datasources/datasources.yml /etc/grafana/provisioning/datasources/datasources.yml
+  cp /opt/module8-devops/monitoring/grafana/provisioning/dashboards/dashboards.yml /etc/grafana/provisioning/dashboards/dashboards.yml
+  cp /opt/module8-devops/monitoring/grafana/dashboards/module8-system-overview.json /var/lib/grafana/dashboards/module8-system-overview.json
   chown -R grafana:grafana /etc/grafana/provisioning /var/lib/grafana/dashboards
 }
 
