@@ -66,6 +66,10 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" <<'REMOTE'
           set -euo pipefail
+          while sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock >/dev/null 2>&1; do
+            echo "Waiting for apt lock..."
+            sleep 10
+          done
           sudo apt-get update
           sudo apt-get install -y python3-venv
           cd /opt/module8-devops/app
