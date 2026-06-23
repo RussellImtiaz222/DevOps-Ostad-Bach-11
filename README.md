@@ -1,49 +1,86 @@
+# Module 10 Assignment: Docker Compose Deployment
 
+This project contains a simple Express.js application that is containerized with Docker and run alongside an Nginx container using Docker Compose.
 
 ## Prerequisites
 
-- Node Version 22
- 
+- Docker Desktop
+- Docker Compose
+- Docker Hub account
 
-### 1. For Run This Applications
+## Local Node.js Commands
+
 ```bash
-# install packages
-npm install 
-
-# Testing The Applications
-npm check
-
-# For Run the application
+npm install
 npm start
 ```
 
+The Express app runs on port `5000` inside the container.
 
-### Deployment Process
-1. **Cleanup**: Removes existing process if running
-   ```bash
-   pm2 delete node-app || true
-   ```
+## Docker Files
 
-2. **Start Application**: Launches with absolute path
-   ```bash
-   pm2 start "./src/server.js" --name node-app
-   ```
+- `Dockerfile` builds the Express.js app image.
+- `.dockerignore` keeps unnecessary files out of the Docker build context.
+- `docker-compose.yml` starts two services:
+  - `nginx` from the `nginx:alpine` image
+  - `express-app` built from this repository's `Dockerfile`
 
-3. **Save Process List**: Persists PM2 configuration
-   ```bash
-   pm2 save
-   ```
+The Compose file starts the Express app after Nginx and exposes the Express app on port `8080`.
 
-### About The Applications
-1. **Route**: This Application has 2 route
-   ```bash
-   / # this will show a hello world page
-   ```
-      ```bash
-   /api # this will response a json
-   ```
+## Run With Docker Compose
 
-2. **Default Port**: By Default this application will run on port 3000
+From the project folder, run:
 
+```bash
+docker compose up -d --build
+```
 
+Check the running containers:
 
+```bash
+docker compose ps
+```
+
+Open the app in a browser:
+
+```text
+http://localhost:8080
+```
+
+Test the API route:
+
+```text
+http://localhost:8080/api
+```
+
+Expected API response:
+
+```json
+{"message":"Hello World changes"}
+```
+
+## Push Image to Docker Hub
+
+Log in to Docker Hub:
+
+```bash
+docker login
+```
+
+Tag the local image. Replace `YOUR_DOCKERHUB_USERNAME` with your Docker Hub username:
+
+```bash
+docker tag module-10-express-app:latest YOUR_DOCKERHUB_USERNAME/module-10-express-app:latest
+```
+
+Push the image:
+
+```bash
+docker push YOUR_DOCKERHUB_USERNAME/module-10-express-app:latest
+```
+
+## Stop the Containers
+
+```bash
+docker compose down
+```

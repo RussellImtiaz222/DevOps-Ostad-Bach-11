@@ -1,0 +1,15 @@
+services:
+  nginx:
+    image: nginx:alpine
+
+  express-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: module-10-express-app:latest
+    depends_on:
+      - nginx
+    ports:
+      - "8080:5000"
+    environment:
+      PORT: 5000
