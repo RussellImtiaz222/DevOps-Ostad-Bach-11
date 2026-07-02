@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-broken
+  namespace: default
+  labels:
+    app: nginx-broken
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-broken
+  template:
+    metadata:
+      labels:
+        app: nginx-broken
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:invalid-version-xyz  # This will fail to pull
+        ports:
+        - containerPort: 80
