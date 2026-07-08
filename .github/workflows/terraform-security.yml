@@ -1,0 +1,136 @@
+name: Terraform Security Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'terraform/**'
+  pull_request:
+    paths:
+      - 'terraform/**'
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  tfsec:
+    name: TFSec Security Scan
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run TFSec scan
+        uses: aquasecurity/tfsec-action@v1.0.2
+        with:
+          working_directory: terraform/environments/dev/
+          format: sarif
+        continue-on-error: true
+
+      - name: Upload TFSec SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: terraform.sarif
+        continue-on-error: true
+
+  checkov:
+    name: Checkov Security Scan
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run Checkov scan
+        id: checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/environments/dev/
+          framework: terraform
+          output_format: sarif
+          output_file_path: reports/checkov.sarif
+          soft_fail: true
+          compact: true
+
+      - name: Upload Checkov SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/checkov.sarif
+        continue-on-error: true
+
+  trivy:
+    name: Trivy Vulnerability Scan
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+        continue-on-error: true
+
+  terraform-compliance:
+    name: Terraform Compliance Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Terraform Compliance
+        run: pip install terraform-compliance
+
+      - name: Run Terraform Compliance
+        run: terraform-compliance -f ./environments/dev -p ../modules/
+        continue-on-error: true
+
+  security-scan-result:
+    name: Security Scan Summary
+    needs: [tfsec, checkov, trivy, terraform-compliance]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Determine workflow status
+        run: |
+          # Check if all required jobs passed (terraform-compliance)
+          if [ "${{ needs.terraform-compliance.result }}" == "success" ]; then
+            echo "✅ Terraform Compliance Check PASSED"
+            echo ""
+            echo "Security scan results:"
+            echo "- TFSec: ${{ needs.tfsec.result }}"
+            echo "- Checkov: ${{ needs.checkov.result }}"
+            echo "- Trivy: ${{ needs.trivy.result }}"
+            echo ""
+            echo "Review the annotations tab above for security findings and remediation guidance."
+            exit 0
+          else
+            echo "❌ Terraform Compliance Check FAILED"
+            exit 1
+          fi

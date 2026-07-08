@@ -1,0 +1,254 @@
+# Prometheus Alerting Rules for 3-Tier Application with System Monitoring
+# Includes Node Exporter metrics for CPU, RAM, disk, and network monitoring
+
+groups:
+  # System/Node Exporter Alerts
+  - name: system_alerts
+    interval: 30s
+    rules:
+      # High CPU Utilization on Nodes
+      - alert: HighCPUUtilization
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High CPU utilization on {{ $labels.instance }}"
+          description: "CPU utilization is {{ $value | humanize }}% on {{ $labels.instance }}"
+
+      # Very High CPU Utilization (Critical)
+      - alert: CriticalCPUUtilization
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Critical CPU utilization on {{ $labels.instance }}"
+          description: "CPU is at {{ $value | humanize }}% on {{ $labels.instance }} - immediate action required"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory utilization is {{ $value | humanize }}% on {{ $labels.instance }}"
+
+      # Critical Memory Usage
+      - alert: CriticalMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Critical memory usage on {{ $labels.instance }}"
+          description: "Memory utilization is {{ $value | humanize }}% on {{ $labels.instance }}"
+
+      # Low Available Memory
+      - alert: LowAvailableMemory
+        expr: node_memory_MemAvailable_bytes / 1024 / 1024 / 1024 < 1
+        for: 5m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Low available memory on {{ $labels.instance }}"
+          description: "Only {{ $value | humanize }}GB memory available on {{ $labels.instance }}"
+
+      # Low Disk Space
+      - alert: LowDiskSpace
+        expr: |
+          (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk usage is {{ $value | humanize }}% on {{ $labels.instance }}"
+
+      # Critical Disk Space
+      - alert: CriticalDiskSpace
+        expr: |
+          (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Critical disk space on {{ $labels.instance }}"
+          description: "Disk usage is {{ $value | humanize }}% on {{ $labels.instance }} - immediate cleanup required"
+
+      # Disk Will Fill Soon
+      - alert: PredictedDiskSpaceFull
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{mountpoint="/"}[24h], 86400) < 0
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "Disk will be full within 24 hours on {{ $labels.instance }}"
+          description: "Disk on {{ $labels.instance }} will be full in approximately 24 hours based on current trend"
+
+      # High Inodes Usage
+      - alert: HighInodesUsage
+        expr: |
+          (node_filesystem_files_free{mountpoint="/"} / node_filesystem_files{mountpoint="/"}) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High inode usage on {{ $labels.instance }}"
+          description: "Only {{ $value | humanizePercentage }} inodes remaining on {{ $labels.instance }}"
+
+      # High Network Traffic In
+      - alert: HighNetworkTrafficIn
+        expr: |
+          rate(node_network_receive_bytes_total{device!="lo"}[5m]) > 100000000
+        for: 5m
+        labels:
+          severity: warning
+          service: network
+        annotations:
+          summary: "High incoming network traffic on {{ $labels.instance }}"
+          description: "Incoming traffic rate: {{ $value | humanize }}B/s on {{ $labels.device }}"
+
+      # High Network Traffic Out
+      - alert: HighNetworkTrafficOut
+        expr: |
+          rate(node_network_transmit_bytes_total{device!="lo"}[5m]) > 100000000
+        for: 5m
+        labels:
+          severity: warning
+          service: network
+        annotations:
+          summary: "High outgoing network traffic on {{ $labels.instance }}"
+          description: "Outgoing traffic rate: {{ $value | humanize }}B/s on {{ $labels.device }}"
+
+      # High Network Packet Loss
+      - alert: HighNetworkPacketLoss
+        expr: |
+          rate(node_network_receive_drop_total{device!="lo"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: network
+        annotations:
+          summary: "Network packet loss detected on {{ $labels.instance }}"
+          description: "Dropped packets on {{ $labels.device }}: {{ $value | humanize }}pkts/s"
+
+      # High Network Errors
+      - alert: HighNetworkErrors
+        expr: |
+          rate(node_network_receive_errs_total{device!="lo"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: network
+        annotations:
+          summary: "Network errors detected on {{ $labels.instance }}"
+          description: "Network errors on {{ $labels.device }}: {{ $value | humanize }}errors/s"
+
+      # Node Exporter Down
+      - alert: NodeExporterDown
+        expr: up{job="node"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Node Exporter is down on {{ $labels.instance }}"
+          description: "Node Exporter on {{ $labels.instance }} has been unreachable for 2 minutes"
+
+      # High System Load
+      - alert: HighSystemLoad
+        expr: |
+          node_load1 > (count by (instance) (node_cpu_seconds_total{mode="system"}) * 0.8)
+        for: 10m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High system load on {{ $labels.instance }}"
+          description: "Load average (1m): {{ $value | humanize }} on {{ $labels.instance }}"
+
+      # Temperature Warning (if available)
+      - alert: HighTemperature
+        expr: node_hwmon_temp_celsius > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: hardware
+        annotations:
+          summary: "High temperature on {{ $labels.instance }}"
+          description: "Temperature: {{ $value | humanize }}°C on sensor {{ $labels.label_name }}"
+
+  - name: application_alerts
+    interval: 30s
+    rules:
+      # Backend API Down
+      - alert: BackendAPIDown
+        expr: up{job="backend-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: backend
+        annotations:
+          summary: "Backend API is down"
+          description: "Backend API at {{ $labels.instance }} is not responding"
+
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: |
+          rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: backend
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.instance }}"
+
+      # High Request Latency
+      - alert: HighRequestLatency
+        expr: |
+          histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: backend
+        annotations:
+          summary: "High request latency detected"
+          description: "P95 latency: {{ $value | humanize }}s for {{ $labels.endpoint }}"
+
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      # Instance Down (backup using CloudWatch metrics)
+      - alert: EC2InstanceDown
+        expr: count(ec2_running_instances) < 2
+        for: 5m
+        labels:
+          severity: critical
+          service: infrastructure
+        annotations:
+          summary: "Running EC2 instances below minimum"
+          description: "Number of running instances: {{ $value }}"
+      - alert: HighNetworkTraffic
+        expr: rate(aws_ec2_networkin_sum[5m]) > 1000000000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High network traffic detected"
+          description: "Network traffic: {{ humanize $value }} bytes/sec"

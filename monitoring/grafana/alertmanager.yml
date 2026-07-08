@@ -1,0 +1,64 @@
+# AlertManager Configuration
+# Handles alert routing and notifications
+
+global:
+  resolve_timeout: 5m
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+
+# The root route with all parameters, which are inherited by the child routes if they are not overwritten.
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  # All alerts with the following labels should be grouped under the following root route and sent to the default receiver
+  routes:
+    - match:
+        severity: critical
+      receiver: 'critical-alert'
+      continue: true
+
+    - match:
+        severity: warning
+      receiver: 'warning-alert'
+      group_wait: 10s
+      repeat_interval: 30m
+
+    - match:
+        alertname: 'Watchdog'
+      receiver: 'null'
+
+# Receivers
+receivers:
+  - name: 'default'
+    slack_configs:
+      - channel: '#alerts'
+        title: '{{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}'
+
+  - name: 'critical-alert'
+    slack_configs:
+      - channel: '#critical-alerts'
+        title: 'CRITICAL: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}'
+        color: 'danger'
+
+  - name: 'warning-alert'
+    slack_configs:
+      - channel: '#alerts'
+        title: 'WARNING: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\n{{ end }}'
+        color: 'warning'
+
+  - name: 'null'
+
+# Inhibition rules
+inhibit_rules:
+  # Mute warning alerts if critical alert is firing for the same instance
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']

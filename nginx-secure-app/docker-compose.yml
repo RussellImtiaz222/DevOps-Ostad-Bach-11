@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  nginx-secure-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+      - "443:443"
+      - "3000:3000"
+    volumes:
+      - ./html:/var/www/secure-app:ro
+      - ./nginx-config/secure-app.conf:/etc/nginx/sites-available/secure-app.conf:ro
+    environment:
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped

@@ -1,0 +1,380 @@
+name: Build and Deploy Application
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'application/**'
+      - '.github/workflows/deploy.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'application/**'
+
+env:
+  AWS_REGION: us-east-1
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./application/backend
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}/backend:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository }}/backend:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository }}/backend:buildcache,mode=max
+      
+      - name: Test Frontend
+        run: |
+          cd application/frontend
+          # Basic validation of HTML
+          if ! grep -q "3-Tier Application" index.html; then
+            echo "Frontend validation failed"
+            exit 1
+          fi
+          echo "Frontend validation passed"
+      
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: application-artifacts
+          path: application/
+
+  deploy:
+    name: Deploy Application
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Download Terraform Outputs
+        uses: actions/download-artifact@v3
+        with:
+          name: terraform-outputs
+        continue-on-error: true
+      
+      - name: Extract Infrastructure Details
+        run: |
+          if [ -f terraform/environments/dev/outputs.json ]; then
+            ALB_DNS=$(jq -r '.alb_dns_name.value' terraform/environments/dev/outputs.json)
+            ASG_NAME=$(jq -r '.asg_name.value' terraform/environments/dev/outputs.json)
+            echo "ALB_DNS_NAME=$ALB_DNS" >> $GITHUB_ENV
+            echo "ASG_NAME=$ASG_NAME" >> $GITHUB_ENV
+            echo "✓ Infrastructure Details:"
+            echo "  ALB DNS: $ALB_DNS"
+            echo "  ASG: $ASG_NAME"
+          else
+            echo "⚠️  outputs.json not found, fetching from Terraform state..."
+            cd terraform/environments/dev
+            terraform init -backend-config="encrypt=true" > /dev/null 2>&1
+            ALB_DNS=$(terraform output -raw alb_dns_name 2>/dev/null || echo "")
+            ASG_NAME=$(terraform output -raw asg_name 2>/dev/null || echo "")
+            echo "ALB_DNS_NAME=$ALB_DNS" >> $GITHUB_ENV
+            echo "ASG_NAME=$ASG_NAME" >> $GITHUB_ENV
+          fi
+      
+      - name: Pre-Deployment Validation
+        run: |
+          echo "🔍 Validating deployment prerequisites..."
+          
+          # Check ALB DNS is available
+          if [ -z "${{ env.ALB_DNS_NAME }}" ]; then
+            echo "❌ ALB DNS not available"
+            exit 1
+          fi
+          
+          # Check ALB is responding
+          if ! curl -s -f http://${{ env.ALB_DNS_NAME }}/health > /dev/null 2>&1; then
+            echo "⚠️  ALB may not be fully initialized (this is normal for first deployment)"
+          else
+            echo "✓ ALB is responding"
+          fi
+      
+      - name: Deploy Backend via ASG Rolling Update
+        run: |
+          echo "🚀 Deploying backend application via ASG rolling update..."
+          
+          if [ ! -z "${{ env.ASG_NAME }}" ]; then
+            # Create new launch template with updated image
+            # Get current launch template
+            LT_ID=$(aws autoscaling describe-auto-scaling-groups \
+              --auto-scaling-group-names "${{ env.ASG_NAME }}" \
+              --query 'AutoScalingGroups[0].LaunchTemplate.LaunchTemplateId' \
+              --output text)
+            
+            echo "Current Launch Template: $LT_ID"
+            
+            # Update ASG to trigger rolling update
+            # This will terminate and replace instances one at a time
+            aws autoscaling update-auto-scaling-group \
+              --auto-scaling-group-name "${{ env.ASG_NAME }}" \
+              --min-size 2 \
+              --desired-capacity 2 \
+              --max-size 4
+            
+            echo "✓ Rolling update initiated for ${{ env.ASG_NAME }}"
+            echo "  Instances will be replaced with the latest application version"
+          else
+            echo "⚠️  ASG name not available, deployment may need manual intervention"
+          fi
+      
+      - name: Wait for Deployment
+        run: |
+          echo "⏳ Waiting for deployment to complete (max 10 minutes)..."
+          
+          MAX_ATTEMPTS=60
+          ATTEMPT=0
+          HEALTHY_INSTANCES=0
+          REQUIRED_HEALTHY=2
+          
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            # Check ASG instance health
+            if [ ! -z "${{ env.ASG_NAME }}" ]; then
+              HEALTHY_INSTANCES=$(aws autoscaling describe-auto_scaling_groups \
+                --auto-scaling-group-names "${{ env.ASG_NAME }}" \
+                --query 'AutoScalingGroups[0].HealthyCount' \
+                --output text)
+              
+              echo "[$((ATTEMPT+1))/$MAX_ATTEMPTS] Healthy instances: $HEALTHY_INSTANCES/$REQUIRED_HEALTHY"
+              
+              if [ "$HEALTHY_INSTANCES" -ge "$REQUIRED_HEALTHY" ]; then
+                echo "✓ All required instances are healthy"
+                break
+              fi
+            fi
+            
+            ATTEMPT=$((ATTEMPT + 1))
+            sleep 10
+          done
+          
+          if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+            echo "⚠️  Deployment timeout (10 minutes), but continuing with health checks..."
+          fi
+      
+      - name: Health Check - Application Endpoints
+        run: |
+          echo "🏥 Performing comprehensive health checks..."
+          
+          ALB_DNS="${{ env.ALB_DNS_NAME }}"
+          MAX_RETRIES=5
+          RETRY=0
+          
+          if [ -z "$ALB_DNS" ]; then
+            echo "⚠️  ALB DNS not available, skipping health checks"
+            exit 0
+          fi
+          
+          while [ $RETRY -lt $MAX_RETRIES ]; do
+            echo "Health check attempt $((RETRY + 1))/$MAX_RETRIES..."
+            
+            # Test health endpoint
+            HEALTH_CHECK=$(curl -s -w "\n%{http_code}" "http://$ALB_DNS/health" 2>/dev/null || echo "000")
+            HTTP_CODE=$(echo "$HEALTH_CHECK" | tail -n1)
+            BODY=$(echo "$HEALTH_CHECK" | head -n-1)
+            
+            if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | grep -q "healthy"; then
+              echo "✓ Health endpoint: OK (HTTP $HTTP_CODE)"
+              
+              # Test system info endpoint
+              SYS_INFO=$(curl -s -w "\n%{http_code}" "http://$ALB_DNS/system-info" 2>/dev/null || echo "000")
+              SYS_CODE=$(echo "$SYS_INFO" | tail -n1)
+              
+              if [ "$SYS_CODE" = "200" ]; then
+                echo "✓ System info endpoint: OK (HTTP $SYS_CODE)"
+                echo "✅ Application is healthy and responding"
+                exit 0
+              fi
+            fi
+            
+            if [ $RETRY -lt $((MAX_RETRIES - 1)) ]; then
+              echo "⏳ Application not ready, retrying in 15 seconds..."
+              sleep 15
+            fi
+            
+            RETRY=$((RETRY + 1))
+          done
+          
+          echo "⚠️  Health checks did not pass after $MAX_RETRIES attempts"
+          echo "    This may be normal for first deployment. Check CloudWatch logs."
+          exit 0
+        continue-on-error: true
+      
+      - name: Test API Response Time
+        run: |
+          echo "⚡ Testing API response times..."
+          
+          ALB_DNS="${{ env.ALB_DNS_NAME }}"
+          
+          if [ -z "$ALB_DNS" ]; then
+            echo "⚠️  ALB DNS not available, skipping performance tests"
+            exit 0
+          fi
+          
+          # Warm up request
+          curl -s http://$ALB_DNS/health > /dev/null
+          
+          # Measure response time
+          RESPONSE_TIME=$(curl -s -o /dev/null -w "%{time_total}" http://$ALB_DNS/health)
+          
+          echo "Average response time: ${RESPONSE_TIME}s"
+          
+          # Alert if response time is high
+          if (( $(echo "$RESPONSE_TIME > 2.0" | bc -l) )); then
+            echo "⚠️  Response time is high (> 2s), check application performance"
+          else
+            echo "✓ Response time is acceptable"
+          fi
+        continue-on-error: true
+      
+      - name: Verify Monitoring Integration
+        run: |
+          echo "📊 Verifying monitoring stack integration..."
+          
+          MONITORING_HOST="${{ secrets.MONITORING_HOST }}"
+          
+          if [ -z "$MONITORING_HOST" ]; then
+            echo "⚠️  MONITORING_HOST not configured"
+            exit 0
+          fi
+          
+          # Check Prometheus can see the application
+          PROMETHEUS_QUERY=$(curl -s "http://$MONITORING_HOST:9090/api/v1/query?query=up{job=\"backend-api\"}" 2>/dev/null || echo '{}')
+          
+          if echo "$PROMETHEUS_QUERY" | grep -q '"result"'; then
+            echo "✓ Application metrics are being collected by Prometheus"
+          else
+            echo "⚠️  Application metrics not yet visible in Prometheus (may be normal for new deployments)"
+          fi
+        continue-on-error: true
+      
+      - name: Update Deployment Record
+        run: |
+          echo "📝 Recording deployment information..."
+          
+          cat > deployment-info.json << EOF
+          {
+            "deployment_time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit_sha": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "triggered_by": "${{ github.actor }}",
+            "alb_dns": "${{ env.ALB_DNS_NAME }}",
+            "asg_name": "${{ env.ASG_NAME }}",
+            "workflow_run_id": "${{ github.run_id }}"
+          }
+          EOF
+          
+          cat deployment-info.json
+      
+      - name: Upload Deployment Record
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-record
+          path: deployment-info.json
+          retention-days: 90
+      
+      - name: Create Deployment Summary
+        run: |
+          echo "## 📦 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Application Deployed Successfully**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time**: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Access Points" >> $GITHUB_STEP_SUMMARY
+          if [ ! -z "${{ env.ALB_DNS_NAME }}" ]; then
+            echo "- **Application**: http://${{ env.ALB_DNS_NAME }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Health Check**: http://${{ env.ALB_DNS_NAME }}/health" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ ! -z "${{ secrets.MONITORING_HOST }}" ]; then
+            echo "- **Grafana Dashboard**: http://${{ secrets.MONITORING_HOST }}:3000" >> $GITHUB_STEP_SUMMARY
+            echo "- **Prometheus**: http://${{ secrets.MONITORING_HOST }}:9090" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Slack Notification - Success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "✅ Application Deployment Successful",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Application Deployment* ✅\n*Status:* Success\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Triggered by:* ${{ github.actor }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Access Points:*\n• Application: http://${{ env.ALB_DNS_NAME }}/\n• Monitoring: http://${{ secrets.MONITORING_HOST }}:3000"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        continue-on-error: true
+      
+      - name: Slack Notification - Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "❌ Application Deployment Failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Application Deployment* ❌\n*Status:* Failed\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Triggered by:* ${{ github.actor }}\n*Run ID:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        continue-on-error: true

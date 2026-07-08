@@ -1,0 +1,81 @@
+{
+  "dashboard": {
+    "title": "3-Tier Application Infrastructure",
+    "tags": ["3-tier", "application", "infrastructure"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "Application Server CPU",
+        "targets": [
+          {
+            "expr": "aws_ec2_cpuutilization_average{AutoScalingGroupName=\"dev-app-asg\"}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Database CPU",
+        "targets": [
+          {
+            "expr": "aws_rds_cpuutilization_average{DBInstanceIdentifier=\"dev-database\"}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Database Connections",
+        "targets": [
+          {
+            "expr": "aws_rds_databaseconnections_average{DBInstanceIdentifier=\"dev-database\"}"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "ALB Request Count",
+        "targets": [
+          {
+            "expr": "rate(aws_applicationelb_requestcount_sum[5m])"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "ALB Response Time",
+        "targets": [
+          {
+            "expr": "aws_applicationelb_targetresponsetime_average"
+          }
+        ],
+        "type": "graph"
+      },
+      {
+        "title": "Healthy Targets",
+        "targets": [
+          {
+            "expr": "aws_applicationelb_healthyhostcount_average"
+          }
+        ],
+        "type": "stat"
+      },
+      {
+        "title": "RDS Free Storage",
+        "targets": [
+          {
+            "expr": "aws_rds_freestoragespace_average{DBInstanceIdentifier=\"dev-database\"}"
+          }
+        ],
+        "type": "gauge"
+      },
+      {
+        "title": "Network In",
+        "targets": [
+          {
+            "expr": "rate(aws_ec2_networkin_sum{AutoScalingGroupName=\"dev-app-asg\"}[5m])"
+          }
+        ],
+        "type": "graph"
+      }
+    ]
+  }
+}

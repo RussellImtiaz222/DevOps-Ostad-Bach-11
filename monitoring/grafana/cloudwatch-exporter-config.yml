@@ -1,0 +1,112 @@
+# CloudWatch Exporter Configuration
+# This exports AWS CloudWatch metrics to Prometheus format
+
+region: us-east-1
+metrics:
+  - aws_namespace: AWS/EC2
+    aws_metric_name: CPUUtilization
+    aws_dimensions:
+      AutoScalingGroupName:
+        - "dev-app-asg"
+    period_seconds: 300
+    range_seconds: 300
+    set_timestamp: null
+    statistic:
+      - Average
+      - Maximum
+
+  - aws_namespace: AWS/EC2
+    aws_metric_name: NetworkIn
+    aws_dimensions:
+      AutoScalingGroupName:
+        - "dev-app-asg"
+    period_seconds: 300
+    range_seconds: 300
+    set_timestamp: null
+    statistic:
+      - Sum
+
+  - aws_namespace: AWS/RDS
+    aws_metric_name: CPUUtilization
+    aws_dimensions:
+      DBInstanceIdentifier:
+        - "dev-database"
+    period_seconds: 300
+    range_seconds: 300
+    set_timestamp: null
+    statistic:
+      - Average
+      - Maximum
+
+  - aws_namespace: AWS/RDS
+    aws_metric_name: DatabaseConnections
+    aws_dimensions:
+      DBInstanceIdentifier:
+        - "dev-database"
+    period_seconds: 300
+    range_seconds: 300
+    set_timestamp: null
+    statistic:
+      - Average
+
+  - aws_namespace: AWS/RDS
+    aws_metric_name: FreeStorageSpace
+    aws_dimensions:
+      DBInstanceIdentifier:
+        - "dev-database"
+    period_seconds: 300
+    range_seconds: 300
+    set_timestamp: null
+    statistic:
+      - Average
+
+  - aws_namespace: AWS/ApplicationELB
+    aws_metric_name: TargetResponseTime
+    aws_dimensions:
+      LoadBalancer:
+        - "app/dev-alb/*"
+    period_seconds: 60
+    range_seconds: 300
+    set_timestamp: null
+    statistic:
+      - Average
+      - Maximum
+
+  - aws_namespace: AWS/ApplicationELB
+    aws_metric_name: RequestCount
+    aws_dimensions:
+      LoadBalancer:
+        - "app/dev-alb/*"
+    period_seconds: 60
+    range_seconds: 300
+    set_timestamp: null
+    statistic:
+      - Sum
+
+  - aws_namespace: AWS/ApplicationELB
+    aws_metric_name: HealthyHostCount
+    aws_dimensions:
+      LoadBalancer:
+        - "app/dev-alb/*"
+      TargetGroup:
+        - "*"
+    period_seconds: 60
+    range_seconds: 300
+    set_timestamp: null
+    statistic:
+      - Average
+
+  - aws_namespace: AWS/ApplicationELB
+    aws_metric_name: UnHealthyHostCount
+    aws_dimensions:
+      LoadBalancer:
+        - "app/dev-alb/*"
+      TargetGroup:
+        - "*"
+    period_seconds: 60
+    range_seconds: 300
+    set_timestamp: null
+    statistic:
+      - Average
+
+sts_region: us-east-1

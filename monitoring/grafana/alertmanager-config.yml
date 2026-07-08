@@ -1,0 +1,188 @@
+# AlertManager Configuration for Email-based Alerts
+# Reference: https://prometheus.io/docs/alerting/latest/configuration/
+
+global:
+  # Prefix for all email subjects
+  resolve_timeout: 5m
+  # SMTP configuration (override with environment variables in deployment)
+  smtp_smarthost: '{{ SMTP_HOST }}:{{ SMTP_PORT }}'
+  smtp_auth_username: '{{ SMTP_USERNAME }}'
+  smtp_auth_password: '{{ SMTP_PASSWORD }}'
+  smtp_require_tls: true
+  smtp_from: '{{ ALERT_FROM_EMAIL }}'
+
+# Template files for alert messages
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# The root route with all parameters, which are inherited by the child routes if they are not overwritten.
+route:
+  # The labels by which incoming alerts are grouped together. For example,
+  # multiple alerts coming in for cluster=A and alertname=LatencyHigh would
+  # be batched into a single group.
+  group_by: ['alertname', 'cluster', 'service', 'severity']
+
+  # How long to wait before sending a notification about new alerts that are
+  # added to a group of alerts for which an initial notification has already
+  # been sent. (Usually ~5m or more.)
+  group_wait: 10s
+
+  # How long to wait before sending a notification about new alerts that are
+  # added to a group of alerts for which an initial notification has already
+  # been sent. (Usually ~5m or more.)
+  group_interval: 10s
+
+  # How long an alert will continue firing before it is resolved.
+  repeat_interval: 12h
+
+  # A default receiver
+  receiver: 'default-receiver'
+
+  # All the above attributes are inherited by all child routes and can
+  # be overwritten on each route.
+
+  routes:
+    # Critical alerts - immediate email notification
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 0s
+      repeat_interval: 1h
+
+    # Warning alerts - grouped email notification
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 5m
+      repeat_interval: 4h
+
+    # Info alerts - less frequent notifications
+    - match:
+        severity: info
+      receiver: 'info-alerts'
+      group_wait: 10m
+      repeat_interval: 24h
+
+# Inhibition rules allow to mute a set of alerts given that another alert is firing.
+# We use this to mute any warning-level notifications if the same alert is firing
+# as a critical-level notification.
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'cluster', 'service']
+
+  - source_match:
+      severity: 'warning'
+    target_match:
+      severity: 'info'
+    equal: ['alertname', 'cluster', 'service']
+
+# Receivers
+receivers:
+  - name: 'default-receiver'
+    email_configs:
+      - to: '{{ ALERT_EMAIL_TO }}'
+        from: '{{ ALERT_FROM_EMAIL }}'
+        smarthost: '{{ SMTP_HOST }}:{{ SMTP_PORT }}'
+        auth_username: '{{ SMTP_USERNAME }}'
+        auth_password: '{{ SMTP_PASSWORD }}'
+        require_tls: true
+        headers:
+          Subject: '[{{ .GroupLabels.severity | toUpper }}] {{ .GroupLabels.alertname }}'
+        html: |
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: Arial, sans-serif; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              th { background-color: #f2f2f2; }
+              .critical { color: #d32f2f; }
+              .warning { color: #f57c00; }
+              .info { color: #1976d2; }
+            </style>
+          </head>
+          <body>
+            <h2>Alert Notification</h2>
+            <p><strong>Alerts Fired:</strong> {{ .Alerts.Firing | len }}</p>
+            <p><strong>Alerts Resolved:</strong> {{ .Alerts.Resolved | len }}</p>
+            
+            {{ if .Alerts.Firing }}
+            <h3 class="critical">Firing Alerts</h3>
+            <table>
+              <tr>
+                <th>Alert Name</th>
+                <th>Severity</th>
+                <th>Service</th>
+                <th>Summary</th>
+              </tr>
+              {{ range .Alerts.Firing }}
+              <tr>
+                <td>{{ .Labels.alertname }}</td>
+                <td class="{{ .Labels.severity }}">{{ .Labels.severity | toUpper }}</td>
+                <td>{{ .Labels.service }}</td>
+                <td>{{ .Annotations.summary }}</td>
+              </tr>
+              {{ end }}
+            </table>
+            {{ end }}
+            
+            {{ if .Alerts.Resolved }}
+            <h3>Resolved Alerts</h3>
+            <table>
+              <tr>
+                <th>Alert Name</th>
+                <th>Service</th>
+                <th>Resolution Time</th>
+              </tr>
+              {{ range .Alerts.Resolved }}
+              <tr>
+                <td>{{ .Labels.alertname }}</td>
+                <td>{{ .Labels.service }}</td>
+                <td>{{ .StartsAt }}</td>
+              </tr>
+              {{ end }}
+            </table>
+            {{ end }}
+            
+            <hr />
+            <p><small>Generated by Prometheus AlertManager</small></p>
+          </body>
+          </html>
+
+  - name: 'critical-alerts'
+    email_configs:
+      - to: '{{ ALERT_CRITICAL_EMAIL_TO }}'
+        from: '{{ ALERT_FROM_EMAIL }}'
+        smarthost: '{{ SMTP_HOST }}:{{ SMTP_PORT }}'
+        auth_username: '{{ SMTP_USERNAME }}'
+        auth_password: '{{ SMTP_PASSWORD }}'
+        require_tls: true
+        headers:
+          Subject: '🚨 CRITICAL: {{ .GroupLabels.alertname }} - Immediate Action Required'
+    # Add additional receivers (PagerDuty, Slack, etc.) here if needed
+
+  - name: 'warning-alerts'
+    email_configs:
+      - to: '{{ ALERT_EMAIL_TO }}'
+        from: '{{ ALERT_FROM_EMAIL }}'
+        smarthost: '{{ SMTP_HOST }}:{{ SMTP_PORT }}'
+        auth_username: '{{ SMTP_USERNAME }}'
+        auth_password: '{{ SMTP_PASSWORD }}'
+        require_tls: true
+        headers:
+          Subject: '⚠️  WARNING: {{ .GroupLabels.alertname }}'
+
+  - name: 'info-alerts'
+    email_configs:
+      - to: '{{ ALERT_EMAIL_TO }}'
+        from: '{{ ALERT_FROM_EMAIL }}'
+        smarthost: '{{ SMTP_HOST }}:{{ SMTP_PORT }}'
+        auth_username: '{{ SMTP_USERNAME }}'
+        auth_password: '{{ SMTP_PASSWORD }}'
+        require_tls: true
+        headers:
+          Subject: 'ℹ️  INFO: {{ .GroupLabels.alertname }}'

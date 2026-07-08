@@ -1,0 +1,43 @@
+# Example terraform.tfvars file
+# Copy this file to terraform.tfvars and update with your values
+
+aws_region           = "us-east-1"
+environment          = "dev"
+key_pair_name        = "Module 6"  # Change to your EC2 key pair name
+master_password      = "Postgres2024!@Secure123"      # Change to a secure password
+
+# VPC Configuration
+vpc_cidr              = "10.0.0.0/16"
+public_subnet_cidrs   = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs  = ["10.0.10.0/24", "10.0.11.0/24"]
+availability_zones    = ["us-east-1a", "us-east-1b"]
+
+# Security Groups
+allowed_ssh_cidr      = ["0.0.0.0/0"]  # Change to your IP for production
+monitoring_cidr       = "0.0.0.0/0"
+
+# RDS Configuration
+db_name              = "appdb"
+master_username      = "postgres"  # PostgreSQL default username
+rds_instance_class   = "db.t3.micro"
+rds_allocated_storage = 20
+rds_storage_type     = "gp3"
+rds_multi_az         = true
+engine               = "postgres"
+engine_version       = "15"
+
+# Application Server Configuration
+app_instance_type    = "t3.small"
+app_min_size         = 2
+app_max_size         = 4
+app_desired_capacity = 2
+
+# Bastion Configuration
+bastion_instance_type = "t3.micro"
+
+# Common Tags
+common_tags = {
+  Project     = "3-Tier-Application"
+  Owner       = "DevOps-Team"
+  CostCenter  = "Engineering"
+}
