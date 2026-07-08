@@ -283,7 +283,7 @@ resource "aws_instance" "monitoring" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = var.instance_type
   key_name               = var.key_pair_name
-  subnet_id              = aws_subnet.monitoring_private.id
+  subnet_id              = aws_subnet.monitoring_public.id
   iam_instance_profile   = aws_iam_instance_profile.monitoring.name
   vpc_security_group_ids = [aws_security_group.monitoring.id]
 

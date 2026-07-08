@@ -1,22 +1,23 @@
 # RDS Module - PostgreSQL Database
 # KMS Key for RDS Encryption
-resource "aws_kms_key" "rds" {
-  description             = "KMS key for RDS database encryption"
-  deletion_window_in_days = 7
-  enable_key_rotation     = true
+# NOTE: Commented out due to IAM permission constraints
+# resource "aws_kms_key" "rds" {
+#   description             = "KMS key for RDS database encryption"
+#   deletion_window_in_days = 7
+#   enable_key_rotation     = true
+#
+#   tags = merge(
+#     var.common_tags,
+#     {
+#       Name = "${var.environment}-rds-key"
+#     }
+#   )
+# }
 
-  tags = merge(
-    var.common_tags,
-    {
-      Name = "${var.environment}-rds-key"
-    }
-  )
-}
-
-resource "aws_kms_alias" "rds" {
-  name          = "alias/${var.environment}-rds-encryption"
-  target_key_id = aws_kms_key.rds.key_id
-}
+# resource "aws_kms_alias" "rds" {
+#   name          = "alias/${var.environment}-rds-encryption"
+#   target_key_id = aws_kms_key.rds.key_id
+# }
 
 # DB Subnet Group
 resource "aws_db_subnet_group" "main" {
@@ -40,7 +41,7 @@ resource "aws_db_instance" "main" {
   allocated_storage     = var.allocated_storage
   storage_type          = var.storage_type
   storage_encrypted     = true
-  kms_key_id            = aws_kms_key.rds.arn
+  # kms_key_id            = aws_kms_key.rds.arn  # Using AWS-managed encryption
   multi_az              = var.multi_az
   db_subnet_group_name  = aws_db_subnet_group.main.name
   db_name               = var.db_name
