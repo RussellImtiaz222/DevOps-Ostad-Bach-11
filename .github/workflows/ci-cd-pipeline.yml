@@ -1,0 +1,302 @@
+name: CI/CD Pipeline - Quality, Security & Performance
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Job 1: Unit Testing & Code Quality
+  test-and-quality:
+    runs-on: ubuntu-latest
+    name: Tests & Code Quality
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-json-report
+      
+      - name: Run unit tests with coverage
+        id: test
+        run: |
+          pytest tests/ \
+            --cov=app \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-summary \
+            --json-report \
+            --json-report-file=report.json \
+            -v
+        continue-on-error: false
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: |
+            report.json
+            htmlcov/
+            .coverage
+      
+      - name: Publish test results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: report.json
+          check_name: Test Results
+          comment_mode: always
+
+  # Job 2: SonarCloud Code Quality Analysis
+  sonarcloud-analysis:
+    runs-on: ubuntu-latest
+    name: SonarCloud Analysis
+    needs: test-and-quality
+    
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest pytest-cov
+      
+      - name: Generate coverage report
+        run: |
+          pytest tests/ --cov=app --cov-report=xml
+      
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=module-15-assignment
+            -Dsonar.organization=russellimtiaz222
+            -Dsonar.sources=app
+            -Dsonar.tests=tests
+            -Dsonar.coverage.exclusions=tests/**
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  # Job 3: Security Scanning
+  security-scan:
+    runs-on: ubuntu-latest
+    name: Security Scanning
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy'
+      
+      - name: Upload Trivy results as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: trivy-security-report
+          path: trivy-results.sarif
+      
+      - name: Run Bandit (Python security linter)
+        run: |
+          pip install bandit
+          bandit -r app/ -f json -o bandit-report.json || true
+      
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v3
+        with:
+          name: bandit-security-report
+          path: bandit-report.json
+
+  # Job 4: Load Testing
+  load-testing:
+    runs-on: ubuntu-latest
+    name: Load Testing
+    needs: test-and-quality
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install locust
+      
+      - name: Start application server
+        run: |
+          python -m app.app &
+          sleep 5
+        env:
+          API_KEY: test-token
+      
+      - name: Run Locust load tests
+        id: load-test
+        run: |
+          locust -f load_tests/locustfile.py \
+            -u 75 \
+            -r 5 \
+            -t 30s \
+            --headless \
+            -H http://localhost:5000 \
+            --csv=load_test_results \
+            --csv-prefix=load_test
+        continue-on-error: true
+      
+      - name: Upload load test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: load-test-results
+          path: |
+            load_test_results*
+
+  # Job 5: Docker Build & Push
+  docker-build:
+    runs-on: ubuntu-latest
+    name: Docker Build & Push
+    needs: [test-and-quality, security-scan]
+    permissions:
+      contents: read
+      packages: write
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Log in to Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Job 6: Policy as Code Validation
+  policy-validation:
+    runs-on: ubuntu-latest
+    name: Policy as Code Validation
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install OPA
+        run: |
+          curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_x86_64
+          chmod +x opa
+          ./opa version
+      
+      - name: Test OPA policies
+        run: |
+          ./opa test policies/ -v
+
+  # Job 7: Dependency Scanning
+  dependency-check:
+    runs-on: ubuntu-latest
+    name: Dependency Vulnerability Check
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run Safety check on Python dependencies
+        run: |
+          pip install safety
+          safety check --json > safety-report.json || true
+      
+      - name: Upload dependency report
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-check-report
+          path: safety-report.json
+
+  # Summary Job
+  ci-summary:
+    runs-on: ubuntu-latest
+    name: CI Pipeline Summary
+    needs: [test-and-quality, sonarcloud-analysis, security-scan, load-testing, policy-validation, dependency-check]
+    if: always()
+    
+    steps:
+      - name: Check CI Status
+        run: |
+          echo "=== CI/CD Pipeline Summary ===" 
+          echo "Test Status: ${{ needs.test-and-quality.result }}"
+          echo "Code Quality Status: ${{ needs.sonarcloud-analysis.result }}"
+          echo "Security Scan Status: ${{ needs.security-scan.result }}"
+          echo "Load Testing Status: ${{ needs.load-testing.result }}"
+          echo "Policy Validation Status: ${{ needs.policy-validation.result }}"
+          echo "Dependency Check Status: ${{ needs.dependency-check.result }}"
+          
+          if [ "${{ needs.test-and-quality.result }}" != "success" ]; then
+            echo "ERROR: Tests failed"
+            exit 1
+          fi

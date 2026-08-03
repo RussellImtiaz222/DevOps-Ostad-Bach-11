@@ -1,0 +1,28 @@
+# Trivy vulnerability scanner configuration
+
+# Severity levels to fail on
+severity: HIGH,CRITICAL
+
+# Exit code when vulnerabilities are found
+exit-code: 0  # Don't fail CI, just report
+
+# Report format
+format: sarif
+output: trivy-results.sarif
+
+# Skip specific checks
+skip-dirs:
+  - .git
+  - .github
+  - node_modules
+  - __pycache__
+  - .pytest_cache
+  - htmlcov
+
+# Scan configuration
+scan-type: fs
+skip-update: false
+download-db-only: false
+
+# Timeout
+timeout: 10m
