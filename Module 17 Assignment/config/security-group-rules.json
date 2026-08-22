@@ -1,0 +1,30 @@
+cd C:\Users\iruss
+chmod 600 .pem
+{
+  "SecurityGroup": {
+    "Description": "Restrictive SSH-only access for EC2 assignment",
+    "Ingress": [
+      {
+        "IpProtocol": "tcp",
+        "FromPort": 22,
+        "ToPort": 22,
+        "IpRanges": [
+          {
+            "CidrIp": "203.0.113.10/32",
+            "Description": "Office admin IP"
+          }
+        ]
+      }
+    ],
+    "Egress": [
+      {
+        "IpProtocol": "-1",
+        "IpRanges": [
+          {
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    ]
+  }
+}
