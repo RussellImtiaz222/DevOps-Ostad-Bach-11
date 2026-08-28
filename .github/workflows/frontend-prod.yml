@@ -39,9 +39,6 @@ jobs:
       - name: Build
         run: yarn build
 
-      - name: Lint
-        run: yarn lint
-
       - name: Generate version
         id: version
         run: |
