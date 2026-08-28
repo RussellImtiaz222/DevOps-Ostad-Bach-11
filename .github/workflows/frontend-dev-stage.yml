@@ -40,7 +40,7 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Type check
+      - name: Build
         run: yarn build
 
       - name: Lint

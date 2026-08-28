@@ -43,7 +43,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Type check
+      - name: Type check  
         run: npm run typecheck
 
       - name: Generate version
