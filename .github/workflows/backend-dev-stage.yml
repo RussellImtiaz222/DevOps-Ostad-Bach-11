@@ -68,8 +68,8 @@ jobs:
         if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
-          context: ./Capstan-Project/simpleChatserver
-          file: ./Capstan-Project/simpleChatserver/Dockerfile.dev
+          context: Capstan-Project/simpleChatserver
+          file: Capstan-Project/simpleChatserver/Dockerfile.dev
           push: true
           tags: |
             ${{ env.REGISTRY }}/russelimtiaz222/backend:dev-${{ steps.version.outputs.version }}
@@ -82,8 +82,8 @@ jobs:
         if: github.ref == 'refs/heads/stage' && github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
-          context: ./Capstan-Project/simpleChatserver
-          file: ./Capstan-Project/simpleChatserver/Dockerfile
+          context: Capstan-Project/simpleChatserver
+          file: Capstan-Project/simpleChatserver/Dockerfile
           push: true
           tags: |
             ${{ env.REGISTRY }}/russelimtiaz222/backend:stage-${{ steps.version.outputs.version }}
