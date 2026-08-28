@@ -1,0 +1,30 @@
+name: Simple Test
+
+on:
+  push:
+    branches: [dev]
+
+jobs:
+  test-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: List directories
+        run: ls -la
+      
+      - name: Check backend path
+        run: ls -la Capstan-Project/simpleChatserver/
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      
+      - name: Install backend deps
+        working-directory: ./Capstan-Project/simpleChatserver
+        run: npm install
+      
+      - name: Build backend
+        working-directory: ./Capstan-Project/simpleChatserver
+        run: npm run build
