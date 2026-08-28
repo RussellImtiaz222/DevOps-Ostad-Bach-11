@@ -40,6 +40,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'yarn'
+          cache-dependency-path: './Capstan-Project/simpleChatui/yarn.lock'
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
