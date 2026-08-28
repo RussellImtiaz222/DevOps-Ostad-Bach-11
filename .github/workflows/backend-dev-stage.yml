@@ -68,7 +68,7 @@ jobs:
         if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
-          context: Capstan-Project/simpleChatserver
+          context: .
           file: Capstan-Project/simpleChatserver/Dockerfile.dev
           push: true
           tags: |
@@ -82,7 +82,7 @@ jobs:
         if: github.ref == 'refs/heads/stage' && github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
-          context: Capstan-Project/simpleChatserver
+          context: .
           file: Capstan-Project/simpleChatserver/Dockerfile
           push: true
           tags: |

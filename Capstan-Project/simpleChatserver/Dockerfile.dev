@@ -7,13 +7,12 @@ WORKDIR /app
 
 ENV NODE_ENV=development
 
-# Install dependencies
-COPY package*.json ./
+# Install dependencies (copy from subdirectory when context is repo root)
+COPY Capstan-Project/simpleChatserver/package*.json ./
 RUN npm install
 
-# Copy source code
-COPY . .
-
+# Copy source code from subdirectory
+COPY Capstan-Project/simpleChatserver/src ./src
 # Expose backend port
 EXPOSE 5000
 

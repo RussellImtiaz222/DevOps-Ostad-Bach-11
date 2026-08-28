@@ -5,12 +5,18 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json yarn.lock* ./
+# Install dependencies (copy from subdirectory when context is repo root)
+COPY Capstan-Project/simpleChatui/package*.json Capstan-Project/simpleChatui/yarn.lock* ./
 RUN yarn install --frozen-lockfile
 
 # Copy source and build
-COPY . .
+COPY Capstan-Project/simpleChatui/src ./src
+COPY Capstan-Project/simpleChatui/public ./public
+COPY Capstan-Project/simpleChatui/index.html ./
+COPY Capstan-Project/simpleChatui/tsconfig.json ./
+COPY Capstan-Project/simpleChatui/tsconfig.app.json ./
+COPY Capstan-Project/simpleChatui/tsconfig.node.json ./
+COPY Capstan-Project/simpleChatui/vite.config.ts ./
 RUN yarn build
 
 # Production runtime: serve static assets with minimal footprint

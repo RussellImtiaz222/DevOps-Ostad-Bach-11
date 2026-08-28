@@ -5,12 +5,18 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json yarn.lock* ./
+# Install dependencies (copy from subdirectory when context is repo root)
+COPY Capstan-Project/simpleChatui/package*.json Capstan-Project/simpleChatui/yarn.lock* ./
 RUN yarn install
 
-# Copy source code
-COPY . .
+# Copy source code from subdirectory
+COPY Capstan-Project/simpleChatui/src ./src
+COPY Capstan-Project/simpleChatui/public ./public
+COPY Capstan-Project/simpleChatui/index.html ./
+COPY Capstan-Project/simpleChatui/tsconfig.json ./
+COPY Capstan-Project/simpleChatui/tsconfig.app.json ./
+COPY Capstan-Project/simpleChatui/tsconfig.node.json ./
+COPY Capstan-Project/simpleChatui/vite.config.ts ./
 
 # Expose Vite dev server port
 EXPOSE 5173
