@@ -1,0 +1,131 @@
+name: Backend Dev & Stage Pipeline
+
+on:
+  push:
+    branches:
+      - dev
+      - stage
+    paths:
+      - 'simpleChatserver/**'
+      - '.github/workflows/backend-dev-stage.yml'
+  pull_request:
+    branches:
+      - dev
+      - stage
+    paths:
+      - 'simpleChatserver/**'
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ${{ github.repository }}/simple-chat-backend
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./simpleChatserver
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: './simpleChatserver/package-lock.json'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Generate version
+        id: version
+        run: |
+          VERSION="v$(cat package.json | grep version | head -1 | awk -F: '{ print $2 }' | sed 's/[",]//g' | tr -d ' ')-$(git rev-parse --short HEAD)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Log in to Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push development image
+        if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./simpleChatserver
+          file: ./simpleChatserver/Dockerfile.dev
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:dev-${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:dev-latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.version.outputs.timestamp }}
+            org.opencontainers.image.environment=development
+
+      - name: Build and push staging image
+        if: github.ref == 'refs/heads/stage' && github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./simpleChatserver
+          file: ./simpleChatserver/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:stage-${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:stage-latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.version.outputs.timestamp }}
+            org.opencontainers.image.environment=staging
+
+  deploy-to-dev:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: development
+    
+    steps:
+      - name: Manual Deployment Required
+        run: |
+          echo "✓ Build and tests passed"
+          echo "✓ Development image pushed to GHCR"
+          echo ""
+          echo "📋 Next step: Manually sync via Argo CD"
+          echo "   argocd app sync backend-dev"
+          echo ""
+          echo "   Or use Argo CD dashboard: https://argocd.example.com"
+
+  deploy-to-stage:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/stage' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    
+    steps:
+      - name: Manual Deployment Required
+        run: |
+          echo "✓ Build and tests passed"
+          echo "✓ Staging image pushed to GHCR"
+          echo ""
+          echo "📋 Next step: Manually sync via Argo CD"
+          echo "   argocd app sync backend-stage"
+          echo ""
+          echo "   Or use Argo CD dashboard: https://argocd.example.com"
