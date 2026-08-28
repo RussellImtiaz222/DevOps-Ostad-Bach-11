@@ -59,7 +59,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./Capstan-Project/simpleChatserver
-          file: ./Capstan-Project/simpleChatserver/Dockerfile
+          file: Dockerfile
           push: true
           tags: |
             ${{ env.REGISTRY }}/russelimtiaz222/backend:prod-${{ steps.version.outputs.version }}
