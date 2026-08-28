@@ -41,7 +41,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
       - name: backend
-        image: ghcr.io/mdarifahammedreza/simple-chat-backend:prod-latest
+        image: ghcr.io/russelimtiaz222/backend:prod-latest
         imagePullPolicy: IfNotPresent
         ports:
         - name: http

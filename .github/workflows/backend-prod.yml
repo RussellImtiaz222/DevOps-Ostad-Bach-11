@@ -51,17 +51,33 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
 
-      - name: ✅ Build successful
-        run: echo "Backend production build completed successfully"
+      - name: Log in to Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push production image
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./Capstan-Project/simpleChatserver
+          file: ./Capstan-Project/simpleChatserver/Dockerfile
+          push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:prod-${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:prod-latest
-            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/russelimtiaz222/backend:prod-${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/russelimtiaz222/backend:prod-latest
+            ${{ env.REGISTRY }}/russelimtiaz222/backend:${{ steps.version.outputs.version }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ steps.version.outputs.timestamp }}
             org.opencontainers.image.environment=production
+
+      - name: ✅ Build and Docker push successful
+        run: echo "Backend production image pushed to GHCR"
 
   deploy-to-prod:
     needs: build-and-test

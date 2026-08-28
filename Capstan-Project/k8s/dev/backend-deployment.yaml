@@ -28,8 +28,8 @@ spec:
     spec:
       containers:
       - name: backend
-        image: ghcr.io/mdarifahammedreza/simple-chat-backend:dev-latest
-        imagePullPolicy: Always
+        image: backend:dev-latest
+        imagePullPolicy: Never
         ports:
         - name: http
           containerPort: 5000

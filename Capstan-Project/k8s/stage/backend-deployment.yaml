@@ -41,8 +41,8 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
       - name: backend
-        image: ghcr.io/mdarifahammedreza/simple-chat-backend:stage-latest
-        imagePullPolicy: Always
+        image: ghcr.io/russelimtiaz222/backend:stage-latest
+        imagePullPolicy: IfNotPresent
         ports:
         - name: http
           containerPort: 5000

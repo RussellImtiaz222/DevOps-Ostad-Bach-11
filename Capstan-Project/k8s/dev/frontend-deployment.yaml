@@ -28,8 +28,8 @@ spec:
     spec:
       containers:
       - name: frontend
-        image: ghcr.io/mdarifahammedreza/simple-chat-frontend:dev-latest
-        imagePullPolicy: Always
+        image: frontend:dev-latest
+        imagePullPolicy: Never
         ports:
         - name: http
           containerPort: 5173

@@ -8,7 +8,7 @@ WORKDIR /app
 ENV NODE_ENV=development
 
 # Install dependencies
-COPY package-lock.json ./
+COPY package*.json ./
 RUN npm install
 
 # Copy source code
