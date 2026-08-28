@@ -6,14 +6,14 @@ on:
       - dev
       - stage
     paths:
-      - 'simpleChatui/**'
+      - 'Capstan-Project/simpleChatui/**'
       - '.github/workflows/frontend-dev-stage.yml'
   pull_request:
     branches:
       - dev
       - stage
     paths:
-      - 'simpleChatui/**'
+      - 'Capstan-Project/simpleChatui/**'
 
 env:
   REGISTRY: ghcr.io
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./simpleChatui
+        working-directory: ./Capstan-Project/simpleChatui
     
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'yarn'
-          cache-dependency-path: './simpleChatui/yarn.lock'
+          cache-dependency-path: './Capstan-Project/simpleChatui/yarn.lock'
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -66,8 +66,8 @@ jobs:
         if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
-          context: ./simpleChatui
-          file: ./simpleChatui/Dockerfile.dev
+          context: ./Capstan-Project/simpleChatui
+          file: ./Capstan-Project/simpleChatui/Dockerfile.dev
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:dev-${{ steps.version.outputs.version }}
@@ -82,8 +82,8 @@ jobs:
         if: github.ref == 'refs/heads/stage' && github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
-          context: ./simpleChatui
-          file: ./simpleChatui/Dockerfile.prod
+          context: ./Capstan-Project/simpleChatui
+          file: ./Capstan-Project/simpleChatui/Dockerfile.prod
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:stage-${{ steps.version.outputs.version }}

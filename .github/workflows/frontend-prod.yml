@@ -5,7 +5,7 @@ on:
     branches:
       - prod
     paths:
-      - 'simpleChatui/**'
+      - 'Capstan-Project/simpleChatui/**'
       - '.github/workflows/frontend-prod.yml'
   pull_request:
     branches:
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./simpleChatui
+        working-directory: ./Capstan-Project/simpleChatui
     
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'yarn'
-          cache-dependency-path: './simpleChatui/yarn.lock'
+          cache-dependency-path: './Capstan-Project/simpleChatui/yarn.lock'
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -64,8 +64,8 @@ jobs:
         if: github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
-          context: ./simpleChatui
-          file: ./simpleChatui/Dockerfile.prod
+          context: ./Capstan-Project/simpleChatui
+          file: ./Capstan-Project/simpleChatui/Dockerfile.prod
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE }}:prod-${{ steps.version.outputs.version }}

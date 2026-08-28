@@ -5,7 +5,7 @@ on:
     branches:
       - prod
     paths:
-      - 'simpleChatserver/**'
+      - 'Capstan-Project/simpleChatserver/**'
       - '.github/workflows/backend-prod.yml'
   pull_request:
     branches:
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./simpleChatserver
+        working-directory: ./Capstan-Project/simpleChatserver
     
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: './simpleChatserver/package-lock.json'
+          cache-dependency-path: './Capstan-Project/simpleChatserver/package-lock.json'
 
       - name: Install dependencies
         run: npm install
@@ -64,8 +64,8 @@ jobs:
         if: github.event_name == 'push'
         uses: docker/build-push-action@v5
         with:
-          context: ./simpleChatserver
-          file: ./simpleChatserver/Dockerfile
+          context: ./Capstan-Project/simpleChatserver
+          file: ./Capstan-Project/simpleChatserver/Dockerfile
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE }}:prod-${{ steps.version.outputs.version }}
