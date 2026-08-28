@@ -360,5 +360,4 @@ kubectl port-forward -n simple-chat-dev svc/backend-dev 5000:5000     # Access b
 
 ---
 
-**Enjoy your deployed application! 🚀**
 
