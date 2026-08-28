@@ -61,7 +61,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: ${{ steps.version.outputs.owner_lower }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push development image
@@ -72,8 +72,8 @@ jobs:
           file: Capstan-Project/simpleChatui/Dockerfile.dev
           push: true
           tags: |
-            ${{ env.REGISTRY }}/russelimtiaz222/frontend:dev-${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/russelimtiaz222/frontend:dev-latest
+            ${{ env.REGISTRY }}/${{ steps.version.outputs.owner_lower }}/frontend:dev-${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ steps.version.outputs.owner_lower }}/frontend:dev-latest
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -86,8 +86,8 @@ jobs:
           file: Capstan-Project/simpleChatui/Dockerfile.prod
           push: true
           tags: |
-            ${{ env.REGISTRY }}/russelimtiaz222/frontend:stage-${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/russelimtiaz222/frontend:stage-latest
+            ${{ env.REGISTRY }}/${{ steps.version.outputs.owner_lower }}/frontend:stage-${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ steps.version.outputs.owner_lower }}/frontend:stage-latest
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
