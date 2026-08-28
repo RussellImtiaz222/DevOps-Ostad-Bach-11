@@ -28,8 +28,8 @@ spec:
     spec:
       containers:
       - name: backend
-        image: backend:dev-latest
-        imagePullPolicy: Never
+        image: ghcr.io/russelimtiaz222/backend:dev-latest
+        imagePullPolicy: IfNotPresent
         ports:
         - name: http
           containerPort: 5000
