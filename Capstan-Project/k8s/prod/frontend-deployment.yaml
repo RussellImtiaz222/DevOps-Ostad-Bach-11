@@ -39,9 +39,11 @@ spec:
                 - frontend
             topologyKey: kubernetes.io/hostname
       terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: frontend
-        image: ghcr.io/russelimtiaz222/frontend:prod-latest
+        image: ghcr.io/russellimtiaz222/frontend:prod-latest
         imagePullPolicy: IfNotPresent
         ports:
         - name: http
@@ -81,3 +83,4 @@ spec:
           capabilities:
             drop:
             - ALL
+

@@ -39,9 +39,11 @@ spec:
                   values:
                   - frontend
               topologyKey: kubernetes.io/hostname
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: frontend
-        image: ghcr.io/russelimtiaz222/frontend:stage-latest
+        image: ghcr.io/russellimtiaz222/frontend:stage-latest
         imagePullPolicy: IfNotPresent
         ports:
         - name: http
@@ -73,3 +75,4 @@ spec:
           periodSeconds: 5
           timeoutSeconds: 3
           failureThreshold: 2
+

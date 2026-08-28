@@ -26,10 +26,12 @@ spec:
       annotations:
         prometheus.io/scrape: "false"
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: frontend
-        image: ghcr.io/russelimtiaz222/frontend:dev-latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/russellimtiaz222/frontend:dev-latest
+        imagePullPolicy: Always
         ports:
         - name: http
           containerPort: 5173
