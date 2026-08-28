@@ -8,6 +8,10 @@ on:
       - 'Capstan-Project/simpleChatui/**'
       - '.github/workflows/frontend-prod.yml'
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
 

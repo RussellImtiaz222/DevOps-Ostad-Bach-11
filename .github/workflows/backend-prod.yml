@@ -8,6 +8,10 @@ on:
       - 'Capstan-Project/simpleChatserver/**'
       - '.github/workflows/backend-prod.yml'
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
 

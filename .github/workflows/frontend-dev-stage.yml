@@ -15,6 +15,10 @@ on:
     paths:
       - 'Capstan-Project/simpleChatui/**'
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
   FRONTEND_IMAGE: ${{ github.repository }}/simple-chat-frontend
