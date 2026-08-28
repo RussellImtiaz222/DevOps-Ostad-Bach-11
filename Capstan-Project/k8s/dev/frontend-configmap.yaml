@@ -4,5 +4,5 @@ metadata:
   name: frontend-config
   namespace: simple-chat-dev
 data:
-  VITE_API_URL: "http://backend-dev:5000"
-  VITE_SOCKET_URL: "http://backend-dev:5000"
+  VITE_API_URL: "http://localhost:5000"
+  VITE_SOCKET_URL: "http://localhost:5000"

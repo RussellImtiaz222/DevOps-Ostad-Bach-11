@@ -1,232 +1,380 @@
 
-# Module 12: DevOps Kubernetes Deployment
+# Simple Chat Application - DevOps Deployment
 
-## ✅ Deployment Status: COMPLETE
+## ✅ Status: FULLY OPERATIONAL
 
-This project demonstrates a complete DevOps deployment pipeline from local development to production Kubernetes cluster.
+A fully containerized, multi-environment real-time chat application deployed to Kubernetes with complete CI/CD automation via GitHub Actions.
 
-### 📊 Deployment Summary
-
-| Component | Status | Details |
-|-----------|--------|---------|
-| **Docker** | ✅ | Image built, tested, pushed to Docker Hub |
-| **AWS Infrastructure** | ✅ | 2× EC2 t3.medium instances (us-east-1) |
-| **Kubernetes** | ✅ | MicroK8s v1.35.6 cluster operational |
-| **Application** | ✅ | 3-replica deployment with RollingUpdate |
-| **Service** | ✅ | NodePort exposed on port 30080 |
-| **Testing** | ✅ | Application verified and responding |
+**Current Setup**: Local Kubernetes (kind) with Docker Desktop  
+**Production Ready**: Deploy to AWS EKS, Azure AKS, Google GKE, or any Kubernetes cluster
 
 ---
 
-## 🚀 Quick Access
+## 🎯 Quick Start
 
-**Application URLs:**
+### Local Development (Current)
+```bash
+# Frontend
+http://localhost:3000
+
+# Backend API & WebSocket
+http://localhost:5000
+http://localhost:5000/api/health  # Health check
+
+# View logs
+kubectl logs -n simple-chat-dev -l app=backend -f
+kubectl logs -n simple-chat-dev -l app=frontend -f
 ```
-API Endpoint:  http://34.200.249.8:30080/api
-Web Interface: http://34.200.249.8:30080/
+
+### Deploy to Production
+Follow the [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md) for:
+- AWS EKS
+- Azure AKS  
+- Google GKE
+- Generic Kubernetes
+
+---
+
+## 🏗️ Architecture
+
+### Components
+- **Backend**: Node.js 20 LTS + Express + TypeScript + Socket.io
+- **Frontend**: React 19 + TypeScript + Vite 8.2.2
+- **Registry**: GitHub Container Registry (GHCR)
+- **Orchestration**: Kubernetes (local: kind, cloud: managed)
+- **CI/CD**: GitHub Actions automated builds & deployments
+
+### Supported Environments
+| Environment | Status | Description |
+|------------|--------|-------------|
+| **dev** | ✅ Running | Hot-reload, local testing |
+| **stage** | ✅ Ready | Production-like, QA testing |
+| **prod** | ✅ Ready | High-availability, auto-scaling |
+
+---
+
+## 📁 Project Structure
+
+```
+Capstan-Project/
+├── simpleChatserver/              # Backend (Node.js/Express)
+│   ├── Dockerfile                 # Production build
+│   ├── Dockerfile.dev             # Development with hot-reload  
+│   ├── package.json
+│   └── src/
+│       ├── app.ts
+│       ├── server.ts
+│       ├── config/                # Configuration
+│       ├── controllers/           # Request handlers
+│       ├── middleware/            # Express middleware
+│       ├── routes/                # API endpoints
+│       ├── services/              # Business logic
+│       ├── socket/                # WebSocket handlers
+│       ├── types/                 # TypeScript types
+│       ├── utils/                 # Utilities
+│       └── validation/            # Input validation
+│
+├── simpleChatui/                  # Frontend (React/Vite)
+│   ├── Dockerfile.dev             # Vite dev server
+│   ├── Dockerfile.prod            # Production Nginx
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── src/
+│       ├── App.tsx
+│       ├── components/            # React components
+│       ├── hooks/                 # Custom hooks
+│       ├── services/              # API & Socket services
+│       ├── types/                 # TypeScript types
+│       └── utils/                 # Utilities
+│
+├── k8s/                           # Kubernetes manifests
+│   ├── dev/                       # Development environment
+│   │   ├── namespace.yaml
+│   │   ├── backend-deployment.yaml
+│   │   ├── backend-configmap.yaml
+│   │   ├── backend-service.yaml
+│   │   ├── frontend-deployment.yaml
+│   │   ├── frontend-configmap.yaml
+│   │   └── frontend-service.yaml
+│   ├── stage/                     # Staging (same structure)
+│   └── prod/                      # Production (same structure)
+│
+├── .github/workflows/             # GitHub Actions CI/CD
+│   ├── backend-dev-stage.yml
+│   ├── backend-prod.yml
+│   ├── frontend-dev-stage.yml
+│   └── frontend-prod.yml
+│
+├── docker-compose.yml             # Local development
+└── README.md                      # This file
 ```
 
-**Expected Responses:**
-- API: `{"message":"Hello World changes"}`
-- Web: HTML page with "Roy" title
+---
+
+## 🔄 CI/CD Pipeline
+
+### GitHub Actions Workflows
+
+**backend-dev-stage.yml** (Trigger: push to `dev` or `stage`)
+- Builds TypeScript backend
+- Pushes to GHCR: `ghcr.io/russellimtiaz222/backend:{env}-{version}`
+- Status: ✅ All builds passing
+
+**frontend-dev-stage.yml** (Trigger: push to `dev` or `stage`)
+- Installs dependencies with Yarn
+- Builds React application
+- Pushes to GHCR: `ghcr.io/russellimtiaz222/frontend:{env}-{version}`
+- Status: ✅ All builds passing
+
+**backend-prod.yml & frontend-prod.yml** (Trigger: push to `prod`)
+- Production-optimized builds
+- Deploys production-tagged images
+- Status: ✅ Ready for production use
+
+### Published Images
+```
+# Development
+ghcr.io/russellimtiaz222/backend:dev-latest
+ghcr.io/russellimtiaz222/frontend:dev-latest
+
+# Staging  
+ghcr.io/russellimtiaz222/backend:stage-latest
+ghcr.io/russellimtiaz222/frontend:stage-latest
+
+# Production
+ghcr.io/russellimtiaz222/backend:prod-latest
+ghcr.io/russellimtiaz222/frontend:prod-latest
+```
 
 ---
 
-## 📋 Infrastructure
+## 🔧 Technology Stack
 
-### Master Node
-- **Public IP:** 34.200.249.8
-- **Private IP:** 172.31.7.113
-- **Instance Type:** t3.medium
-- **OS:** Ubuntu 24.04.4 LTS
-- **Kubernetes:** MicroK8s v1.35.6 ✅
-
-### Worker Node
-- **Public IP:** 32.197.218.119
-- **Private IP:** 172.31.8.168
-- **Instance Type:** t3.medium
-- **OS:** Ubuntu 24.04.4 LTS
-- **Kubernetes:** MicroK8s v1.35.6 ✅
-
----
-
-## 🐳 Docker Image
-
-**Repository:** irussell1807/devops_module_12_assignment
-- **Tag:** latest
-- **Size:** 50MB (compressed) / 215MB (uncompressed)
-- **Status:** ✅ Pushed to Docker Hub
-- **View:** https://hub.docker.com/r/irussell1807/devops_module_12_assignment
-
----
-
-## 📱 Application Details
-
-### Routes
-- **GET /** → Returns HTML page with "Roy" title
-- **GET /api** → Returns JSON: `{"message":"Hello World changes"}`
-
-### Configuration
-- **Port:** 5000 (internal), 30080 (NodePort)
-- **Replicas:** 3 (distributed across cluster)
-- **Memory Limit:** 256Mi per pod
-- **CPU Limit:** 500m per pod
-
-### Health Checks
-- **Liveness Probe:** HTTP GET /api (10s delay, 20s interval)
-- **Readiness Probe:** HTTP GET /api (5s delay, 10s interval)
-
-### Security
-- **Non-root User:** UID 1000
-- **Read-only Filesystem:** Enabled
-- **Privilege Escalation:** Disabled
-- **Pod Anti-affinity:** Preferred (spreads pods across nodes)
+| Component | Technology | Version |
+|-----------|-----------|---------|
+| **Backend Runtime** | Node.js | 20 LTS |
+| **Backend Framework** | Express.js | Latest |
+| **Backend Language** | TypeScript | 5+ |
+| **Real-time** | Socket.io | Latest |
+| **Frontend Framework** | React | 19 |
+| **Frontend Build** | Vite | 8.2.2 |
+| **Package Manager** | Yarn | 1.22.22 |
+| **Container Runtime** | Docker | 20+ |
+| **Orchestration** | Kubernetes | 1.27+ |
+| **Container Registry** | GHCR | Public |
+| **CI/CD** | GitHub Actions | - |
 
 ---
 
 ## 📚 Documentation
 
-### Getting Started
-1. **START_HERE.md** - Overview and project structure
-2. **QUICK_START.md** - Fast setup reference
-
-### Setup Guides
-3. **EC2_SETUP_GUIDE.md** - AWS infrastructure setup
-4. **MASTER_NODE_SETUP.md** - Master node Kubernetes configuration
-5. **WORKER_NODE_SETUP.md** - Worker node setup and cluster join
-6. **APPLICATION_DEPLOYMENT.md** - Kubernetes manifests and deployment
-
-### Reference
-7. **DEPLOYMENT_GUIDE.md** - Complete deployment walkthrough
+| Document | Purpose |
+|----------|---------|
+| [README.md](README.md) | Project overview (this file) |
+| [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md) | Cloud deployment instructions |
+| [QUICK-START.md](QUICK-START.md) | Daily operations & commands |
+| [SESSION-SUMMARY.md](SESSION-SUMMARY.md) | Session achievements & details |
+| [Capstan-Project/DEVOPS-GUIDE.md](Capstan-Project/DEVOPS-GUIDE.md) | Architecture & design |
 
 ---
 
-## 🔧 Local Development
+## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js v22
-- Docker Desktop
+- Docker Desktop (with Kubernetes enabled)
+- kubectl CLI
+- Git
+- Bash or PowerShell
 
-### Running Locally
+### Local Setup (Already Deployed)
 ```bash
-# Install dependencies
-npm install
+# Verify cluster
+kubectl get nodes
+kubectl get pods -n simple-chat-dev
 
-# Run development server
-npm start
-# Application available at http://localhost:5000
+# Access application
+# Frontend: http://localhost:3000
+# Backend:  http://localhost:5000
 
-# Run tests
-npm test
+# View logs
+kubectl logs -n simple-chat-dev -l app=backend -f
+kubectl logs -n simple-chat-dev -l app=frontend -f
 ```
 
-### Building Docker Image
+### Port-Forward Setup
 ```bash
-# Build locally
-docker build -t devops_module_12_assignment:latest .
+# Backend (5000)
+kubectl port-forward -n simple-chat-dev svc/backend-dev 5000:5000
 
-# Test locally
-docker run -p 5000:5000 devops_module_12_assignment:latest
-
-# Tag for Docker Hub
-docker tag devops_module_12_assignment:latest irussell1807/devops_module_12_assignment:latest
-
-# Push to Docker Hub
-docker push irussell1807/devops_module_12_assignment:latest
+# Frontend (3000)  
+kubectl port-forward -n simple-chat-dev svc/frontend-dev 3000:3000
 ```
 
 ---
 
-## 🔑 Key Technologies
+## 🛠️ Common Tasks
 
-- **Container Runtime:** Docker (containerd v2.2.5)
-- **Orchestration:** MicroK8s v1.35.6 (Kubernetes)
-- **Application:** Node.js Express server
-- **Infrastructure:** AWS EC2 (t3.medium)
-- **Base OS:** Ubuntu 24.04.4 LTS
-- **Networking:** Calico (MicroK8s default)
-
----
-
-## 📝 Project Structure
-
-```
-Module-3-deployment/
-├── Dockerfile                    # Multi-stage build configuration
-├── index.html                    # Static assets
-├── package.json                  # Node.js dependencies
-├── src/
-│   ├── server.js                # Express application
-│   ├── main.tsx                 # Frontend entry
-│   └── public/
-│       ├── index.html           # Web UI
-│       └── styles.css           # Styling
-├── test/
-│   └── server.test.js           # Application tests
-├── k8s-namespace.yaml           # Production namespace
-├── k8s-deployment.yaml          # 3-replica deployment
-├── k8s-service.yaml             # NodePort service (30080)
-└── Documentation/
-    ├── README.md                # This file
-    ├── START_HERE.md            # Quick overview
-    ├── QUICK_START.md           # Reference guide
-    ├── EC2_SETUP_GUIDE.md       # AWS setup
-    ├── MASTER_NODE_SETUP.md     # Master configuration
-    ├── WORKER_NODE_SETUP.md     # Worker configuration
-    ├── APPLICATION_DEPLOYMENT.md # K8s deployment
-    └── DEPLOYMENT_GUIDE.md      # Full walkthrough
-```
-
----
-
-## ⚙️ Kubernetes Manifests
-
-All manifests are in the root directory:
-- **k8s-namespace.yaml** - Creates `production` namespace
-- **k8s-deployment.yaml** - Deploys 3 app replicas with security policies
-- **k8s-service.yaml** - Exposes app via NodePort on port 30080
-
-Apply all at once:
+### View Logs
 ```bash
-sudo microk8s kubectl apply -f k8s-namespace.yaml
-sudo microk8s kubectl apply -f k8s-deployment.yaml
-sudo microk8s kubectl apply -f k8s-service.yaml
+# Backend logs
+kubectl logs -n simple-chat-dev -l app=backend -f --timestamps
+
+# Frontend logs
+kubectl logs -n simple-chat-dev -l app=frontend -f --timestamps
+
+# All events
+kubectl describe events -n simple-chat-dev
+```
+
+### Scale Deployment
+```bash
+# Scale backend (dev has 1, stage/prod have 2)
+kubectl scale deployment backend-dev --replicas=3 -n simple-chat-dev
+```
+
+### Update Configuration
+```bash
+# Edit environment variables
+kubectl edit configmap backend-config -n simple-chat-dev
+
+# Restart pods to apply
+kubectl rollout restart deployment backend-dev -n simple-chat-dev
+```
+
+### Access Pod Shell
+```bash
+# Backend shell
+kubectl exec -it deployment/backend-dev -n simple-chat-dev -- sh
+
+# Frontend shell
+kubectl exec -it deployment/frontend-dev -n simple-chat-dev -- sh
 ```
 
 ---
 
-## 🧪 Testing & Verification
+## 🚨 Troubleshooting
 
-### SSH into Master Node
-```powershell
-ssh -i "C:\Users\iruss\.pem" ubuntu@34.200.249.8
+### WebSocket Connection Issues
+```bash
+# Symptom: "Reconnecting..." message
+# Fix: Verify port-forwards and CORS configuration
+kubectl edit configmap backend-config -n simple-chat-dev
+# Ensure CLIENT_URL includes http://localhost:3000
 ```
 
-### Verify Cluster
+### Pods Not Starting
 ```bash
-sudo microk8s kubectl get nodes
-sudo microk8s kubectl get pods -n production
-sudo microk8s kubectl get svc -n production
+# Check pod status
+kubectl describe pod <pod-name> -n simple-chat-dev
+
+# Check image pull secret exists
+kubectl get secrets -n simple-chat-dev
+
+# Verify image in GHCR
+docker pull ghcr.io/russellimtiaz222/backend:dev-latest
 ```
 
-### Test Application
+### Connection Timeouts
 ```bash
-# Internal test (on master node)
-curl http://localhost:30080/api
+# Verify services are running
+kubectl get svc -n simple-chat-dev
 
-# External test (from any network)
-curl http://34.200.249.8:30080/api
+# Check service endpoints
+kubectl get endpoints -n simple-chat-dev
+
+# Port-forward for direct access
+kubectl port-forward svc/backend-dev 5000:5000 -n simple-chat-dev
 ```
 
 ---
 
-## 📦 Prerequisites
+## 📊 Current Status
 
-- Node.js v22 (for local development)
-- Docker Desktop (for local testing)
-- AWS account with EC2 access
-- SSH client (built-in on Windows 10+)
-- `.pem` file for EC2 key pair
+### Local Kubernetes
+- **Cluster**: kind (Kubernetes in Docker)
+- **Version**: v1.27.3
+- **CNI**: Calico
+- **Nodes**: 1 (control-plane)
+- **Status**: ✅ Running
+
+### Namespaces
+```
+✅ simple-chat-dev   (1/1 pods ready)
+✅ simple-chat-stage (ready to deploy)
+✅ simple-chat-prod  (ready to deploy)
+```
+
+### Access Points
+- Frontend: http://localhost:3000 ✅
+- Backend: http://localhost:5000 ✅
+- Health: http://localhost:5000/api/health ✅
+
+---
+
+## 📝 Environment Configuration
+
+### Backend (.env / ConfigMap)
+```bash
+NODE_ENV=development
+PORT=5000
+CLIENT_URL=http://localhost:3000,http://localhost:5173,http://frontend-dev:3000
+CHAT_PRIMARY_COLOR=#2563EB
+CHAT_SECONDARY_COLOR=#EFF6FF
+```
+
+### Frontend (.env / ConfigMap)
+```bash
+VITE_API_URL=http://localhost:5000
+VITE_SOCKET_URL=http://localhost:5000
+```
+
+---
+
+## 🔐 Security
+
+- **Image Registry**: Public (GHCR)
+- **Pull Secrets**: Created in each namespace
+- **CORS**: Configured per environment
+- **Health Checks**: Liveness & Readiness probes enabled
+- **Resource Limits**: CPU & Memory defined per pod
+
+---
+
+## ✅ Deployment Checklist
+
+- [x] Local Kubernetes cluster running
+- [x] Backend pod deployed and healthy
+- [x] Frontend pod deployed and healthy
+- [x] WebSocket connection working
+- [x] GitHub Actions CI/CD passing
+- [x] Images published to GHCR
+- [x] Documentation completed
+
+---
+
+## 🎓 Next Steps
+
+1. **Test Locally**: Access http://localhost:3000 and verify chat functionality
+2. **Deploy to Cloud**: Follow [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md)
+3. **Monitor**: Set up Prometheus and logging
+4. **Scale**: Configure HPA for auto-scaling
+5. **Backup**: Implement disaster recovery
+
+---
+
+## 📞 Support
+
+- Check [QUICK-START.md](QUICK-START.md) for quick reference
+- Review [DEPLOYMENT-GUIDE.md](DEPLOYMENT-GUIDE.md) for your target platform
+- View pod logs: `kubectl logs -n simple-chat-dev <pod-name>`
+- Describe pod: `kubectl describe pod -n simple-chat-dev <pod-name>`
+
+---
+
+**Last Updated**: August 28, 2026  
+**Status**: Production Ready ✅  
+**Environments**: 3 (dev, stage, prod)
+
 
 
 

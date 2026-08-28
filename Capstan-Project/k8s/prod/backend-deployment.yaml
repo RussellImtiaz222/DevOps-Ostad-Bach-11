@@ -8,7 +8,7 @@ metadata:
     environment: production
     version: prod
 spec:
-  replicas: 3
+  replicas: 2
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -30,18 +30,20 @@ spec:
     spec:
       affinity:
         podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - backend
-            topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - backend
+              topologyKey: kubernetes.io/hostname
       terminationGracePeriodSeconds: 30
       containers:
       - name: backend
-        image: ghcr.io/russelimtiaz222/backend:prod-latest
+        image: ghcr.io/russellimtiaz222/backend:prod-latest
         imagePullPolicy: IfNotPresent
         ports:
         - name: http
