@@ -58,7 +58,7 @@ jobs:
       - name: Build and push production image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./Capstan-Project/simpleChatui
           file: ./Capstan-Project/simpleChatui/Dockerfile.prod
           push: true
           tags: |
