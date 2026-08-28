@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: simple-chat-prod
+data:
+  VITE_API_URL: "http://backend-prod:5000"
+  VITE_SOCKET_URL: "http://backend-prod:5000"

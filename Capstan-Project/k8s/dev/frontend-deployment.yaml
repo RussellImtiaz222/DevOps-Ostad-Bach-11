@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-dev
+  namespace: simple-chat-dev
+  labels:
+    app: frontend
+    environment: development
+    version: dev
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: frontend
+      environment: development
+  template:
+    metadata:
+      labels:
+        app: frontend
+        environment: development
+      annotations:
+        prometheus.io/scrape: "false"
+    spec:
+      containers:
+      - name: frontend
+        image: ghcr.io/mdarifahammedreza/simple-chat-frontend:dev-latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 5173
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: frontend-config
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
